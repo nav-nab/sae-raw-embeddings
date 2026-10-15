@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sae-raw"
+version = "0.1.0"
+description = "Can a sparse autoencoder recover GPT-2's raw token embeddings?"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "huggingface_hub",
+    "safetensors",
+    "tokenizers",
+    "pyarrow",
+]
+
+[project.optional-dependencies]
+train = ["torch"]
+dev = ["pytest"]
+
+[tool.setuptools]
+packages = ["sae_raw"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
