@@ -9,7 +9,7 @@ The setting is chosen so that an exact answer exists. We train on the rows of GP
 Each experiment has a plan in `docs/` and its code in its own folder under `experiments/`.
 
 - **Experiment 1** (plan `docs/experiment_1_top1.md`, results `docs/experiment_1_results.md`, code `experiments/exp1_top1/`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measured what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
-- **Experiment 2** (plan `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, script not written yet): an L1-penalised ReLU SAE with the same data, dictionary and initialisation. It goes ahead because revival in Experiment 1 was below 80%. Success is measured by decoder recovery, since the loss cannot reach zero.
+- **Experiment 2** (plan `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, ready to run): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. It goes ahead because revival in Experiment 1 was below 80%. Success is measured by decoder recovery, since the loss cannot reach zero. On the subset, $\lambda = 0.3$ recovered the most tokens of any setup so far.
 - **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, ready to run): as Experiment 1, but with a TopK encoder whose $k$ starts at 32, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery. On the subset, the chosen schedule recovered six times as many tokens as Top1.
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each.
@@ -34,7 +34,7 @@ sae_raw/              shared library code
                       analysis, logging
 experiments/
   exp1_top1/run.py         runs all of Experiment 1
-  exp2_l1_relu/            Experiment 2 (script to be written)
+  exp2_l1_relu/run.py      runs all of Experiment 2
   exp3_k_annealing/run.py  runs all of Experiment 3
 scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
@@ -67,6 +67,7 @@ Each experiment runs from a single script:
 
 ```
 caffeinate -i python experiments/exp1_top1/run.py
+caffeinate -i python experiments/exp2_l1_relu/run.py
 caffeinate -i python experiments/exp3_k_annealing/run.py
 ```
 
@@ -77,13 +78,13 @@ caffeinate -i python experiments/exp3_k_annealing/run.py
 3. It trains, with a full-vocabulary evaluation at step 0 and then `--n-evals` more (default 20).
 4. It analyses the result and logs the experiment's conclusion.
 
-`--help` lists all options. Experiment 3 also takes `--k0`, `--end-frac` and `--shape` to change the schedule.
+`--help` lists all options. Experiment 2 also takes `--l1-coef`, and Experiment 3 takes `--k0`, `--end-frac` and `--shape` to change the schedule.
 
 **Interrupting and resuming.** A checkpoint is saved every 10 minutes. On Ctrl-C the script finishes the current step, saves a checkpoint and stops. A second Ctrl-C aborts without saving. Running the same command again resumes from the checkpoint with the settings saved in the run directory, and gives the same result as an uninterrupted run. `--fresh` discards the earlier run and starts again.
 
-**Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, alive count and revival. Each evaluation is also logged in full.
+**Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, active features per token, alive count and revival. Each evaluation is also logged in full.
 
-**Run directory** (`--run-dir`, default `runs/exp1` or `runs/exp3`, about 1.5 GB):
+**Run directory** (`--run-dir`, default `runs/exp1`, `runs/exp2` or `runs/exp3`, about 1.5 GB):
 
 - `config.json`: the settings, including the measured step and evaluation times;
 - `init.pt`: the parameters at initialisation, saved before the first step;
@@ -95,7 +96,7 @@ caffeinate -i python experiments/exp3_k_annealing/run.py
 
 Each evaluation reports:
 
-- `k`: the number of features selected per token at that point;
+- `k`: the number of features selected per token at that point (empty for the L1 model);
 - `mse` and `rel_loss`: the reconstruction error, and that error relative to reconstructing zero (1 means no better than zero);
 - `mean_l0`: the mean number of active features per token (at most $k$);
 - `n_alive`: features active on at least one token, and `n_zero_code`: tokens with no active feature;
@@ -131,4 +132,5 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 1: script and full run (results in `docs/experiment_1_results.md`)
 - [x] Experiment 3: schedule chosen (halving from 32, reaching 1 at 80% of training) and script written
 - [ ] Experiment 3 full run
-- [ ] Experiment 2: design questions ($\lambda$, learning rate, recovery threshold), then the script
+- [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
+- [ ] Experiment 2 full run

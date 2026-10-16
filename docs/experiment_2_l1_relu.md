@@ -1,5 +1,7 @@
 # Experiment 2: an L1-penalised ReLU SAE
 
+Status: ready to run, with $\lambda = 0.3$.
+
 This experiment runs if fewer than 80% of the Top1 features that are dead at initialisation revive in Experiment 1. None revived (`docs/experiment_1_results.md`), so it goes ahead.
 
 ## Motivation
@@ -25,7 +27,9 @@ Different from Experiment 1:
 
 - **Encoder:** $f(x) = \mathrm{ReLU}(W_{\mathrm{enc}} x + b_{\mathrm{enc}})$. Every feature may be active.
 - **Loss:** $\|x - W_{\mathrm{dec}}^\top f(x)\|_2^2 + \lambda \sum_j f_j(x)$. With unit-norm decoder rows, this is the usual SAE L1 penalty.
-- **Cost:** the decoder is now dense. In the sandbox a step at batch size 4096 took about 3 times as long as a Top1 step (9.9 s against 3.1 s), and needed about 4 GB of memory. At batch size 1024 it took 3.3 s.
+- **Penalty:** $\lambda = 0.3$, chosen by the subset sweep below.
+- **Batch size:** 1024, since the dense decoder makes large batches slow.
+- **Cost:** in the sandbox at full scale, a step at batch size 1024 took 2.6 to 3.3 s and a full-vocabulary evaluation about 55 s, twice as long as for Top1. The final analysis took about 2 minutes.
 
 ## Measurement
 
@@ -51,10 +55,17 @@ Two trends set the window for $\lambda$. Below 0.3, codes stay dense for longer:
 
 ## How to run
 
-A single script, `experiments/exp2_l1_relu/run.py`, will run this experiment through the same shared runner as Experiments 1 and 3. It will be written once the design questions below are settled.
+```
+caffeinate -i python experiments/exp2_l1_relu/run.py
+```
 
-## Open design questions
+The script works like the other experiment scripts. It prepares the data if needed and times this machine to fit the 10-hour budget. It then trains with a checkpoint every 10 minutes and a heartbeat every minute, and finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp2/`. `--l1-coef` changes $\lambda$.
 
-1. The value of $\lambda$.
-2. The learning rate. The current rule was derived for TopK SAEs.
-3. The cosine threshold for counting a token as recovered.
+One thing to watch at full scale. At initialisation about half of all features are active on each token, about 25,000 of 50,257 against about 1,000 of 2,000 on the subset. The relative loss therefore starts near 1,000 rather than near 1, and the first part of training is spent switching most features off. On the subset this took a few hundred steps. At full scale the learning rate is five times smaller and there are 25 times more active features to silence, so it may take a good share of the run. The heartbeat's active-features-per-token figure shows how fast this is going.
+
+## Decisions
+
+- **Learning rate:** the same Gao et al. rule as the other experiments, about $1.1\times10^{-4}$ at full scale, so that only the encoder and loss change.
+- **Recovery threshold:** the same mutual-nearest-neighbour test at cosine 0.9 and 0.99 as the other experiments.
+- **Batch size:** 1024. At 4096 a step takes about three times as long, so 10 hours would allow only about 3,500 steps. At 1024 about 10,700 steps fit, for roughly the same number of tokens seen.
+- **$\lambda = 0.3$**, the best value in the subset sweep above.

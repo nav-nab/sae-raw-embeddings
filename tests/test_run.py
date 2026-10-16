@@ -93,3 +93,16 @@ def test_schedule_helpers():
     by_k = {32: 5.0, 16: 3.0, 8: 2.0, 4: 1.5, 2: 1.2, 1: 1.0}
     expected = 0.16 * (5 + 3 + 2 + 1.5 + 1.2) + 0.2 * 1.0
     assert abs(mean_step_seconds(by_k, sched) - expected) < 0.01  # stage edges round
+
+
+def test_experiment_2_script_end_to_end(tmp_path):
+    _fake_data(tmp_path / "data")
+    r = subprocess.run([sys.executable, str(REPO / "experiments" / "exp2_l1_relu" / "run.py"),
+                        "--data-dir", str(tmp_path / "data"), "--run-dir", str(tmp_path / "run"),
+                        "--n-evals", "2", "--steps", "30", "--heartbeat-seconds", "0"],
+                       capture_output=True, text=True, cwd=REPO, timeout=300)
+    assert r.returncode == 0, r.stderr
+    cfg = json.loads((tmp_path / "run" / "config.json").read_text())
+    assert cfg["model"] == "l1" and cfg["l1_coef"] == 0.3 and cfg["batch_size"] == 1024
+    result = json.loads((tmp_path / "run" / "analysis.json").read_text())
+    assert "n_recovered_cos0.9" in result and "Result:" in (tmp_path / "run" / "run.log").read_text()

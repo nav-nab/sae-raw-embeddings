@@ -124,7 +124,7 @@ def load_model_file(path, cfg, d, m, k=None):
     return model
 
 
-def _parser(description, default_run_dir, schedule):
+def _parser(description, default_run_dir, schedule, l1_coef, batch_size):
     p = argparse.ArgumentParser(description=description,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--run-dir", default=default_run_dir)
@@ -134,10 +134,12 @@ def _parser(description, default_run_dir, schedule):
                    help="number of training steps (default: chosen from --hours)")
     p.add_argument("--n-evals", type=int, default=20,
                    help="full-vocabulary evaluations during training, after step 0")
-    p.add_argument("--batch-size", type=int, default=4096)
+    p.add_argument("--batch-size", type=int, default=batch_size)
     p.add_argument("--lr", type=float, default=None,
                    help="default: 2e-4 / sqrt(m / 2^14), the Gao et al. rule")
     p.add_argument("--seed", type=int, default=0)
+    if l1_coef is not None:
+        p.add_argument("--l1-coef", type=float, default=l1_coef, help="L1 penalty coefficient")
     if schedule is not None:
         p.add_argument("--k0", type=int, default=schedule["k0"], help="starting k")
         p.add_argument("--end-frac", type=float, default=schedule["end_frac"],
@@ -157,14 +159,15 @@ def _parser(description, default_run_dir, schedule):
 
 
 def run_experiment(name, description, default_run_dir, model, report, schedule=None,
-                   argv=None):
+                   l1_coef=None, batch_size=4096, argv=None):
     """Run one experiment end to end (see the module docstring).
 
-    model is "top1" or "topk". For "topk", schedule is the default k schedule
-    (keys k0, end_frac, shape), which can be changed on the command line.
+    model is "top1", "topk" or "l1". For "topk", schedule is the default k
+    schedule (keys k0, end_frac, shape); for "l1", l1_coef is the default L1
+    coefficient. Both can be changed on the command line, as can batch_size.
     report(result, log) logs the experiment-specific conclusion.
     """
-    args = _parser(description, default_run_dir, schedule).parse_args(argv)
+    args = _parser(description, default_run_dir, schedule, l1_coef, batch_size).parse_args(argv)
     run_dir = Path(args.run_dir)
     log = setup_logging(run_dir)
     log("=" * 70)
@@ -193,13 +196,14 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
     sched = cfg.get("schedule")
     by_k = {int(k): v for k, v in cfg["step_seconds_by_k"].items()} if sched else None
     log("Settings: " + json.dumps({k: cfg.get(k) for k in (
-        "V", "batch_size", "lr", "seed", "steps", "eval_every", "schedule", "subset",
+        "V", "batch_size", "lr", "seed", "steps", "eval_every", "schedule", "l1_coef", "subset",
         "frequency_weighted")}))
     train_counts = counts if cfg["frequency_weighted"] else None
 
     _, history, finished = train(
         E, steps=cfg["steps"], batch_size=cfg["batch_size"], lr=cfg["lr"], seed=cfg["seed"],
-        eval_every=cfg["eval_every"], model=cfg["model"], k=cfg.get("k"), schedule=sched,
+        eval_every=cfg["eval_every"], model=cfg["model"], k=cfg.get("k"),
+        l1_coef=cfg.get("l1_coef"), schedule=sched,
         counts=train_counts, device=cfg["device"], run_dir=run_dir,
         checkpoint_every=60 * cfg["checkpoint_minutes"], heartbeat_every=cfg["heartbeat_seconds"],
         extra_eta_seconds=ANALYSIS_EVALS * cfg["eval_seconds"], step_seconds_by_k=by_k, log=log)
@@ -227,7 +231,8 @@ def _new_config(name, model, schedule, args, E, log):
     if schedule is not None:
         sched = {"k0": args.k0, "end_frac": args.end_frac, "shape": args.shape}
     cfg = {
-        "experiment": name, "model": model, "l1_coef": None, "k": sched["k0"] if sched else None,
+        "experiment": name, "model": model, "l1_coef": getattr(args, "l1_coef", None),
+        "k": sched["k0"] if sched else None,
         "schedule": sched, "data_dir": args.data_dir, "subset": args.subset, "V": V,
         "d": E.shape[1], "batch_size": args.batch_size, "lr": args.lr or default_lr(V),
         "seed": args.seed, "frequency_weighted": args.frequency_weighted, "hours": args.hours,
@@ -239,7 +244,8 @@ def _new_config(name, model, schedule, args, E, log):
     log(f"Timing {args.batch_size}-token steps on {V:,} tokens "
         f"({torch.get_num_threads()} threads) ...")
     if sched is None:
-        step_s, eval_s = time_training(E, args.batch_size, model=model, device=args.device)
+        step_s, eval_s = time_training(E, args.batch_size, model=model,
+                                       l1_coef=cfg["l1_coef"], device=args.device)
         log(f"  {step_s:.2f} s per step, {eval_s:.0f} s per evaluation")
     else:
         by_k = {}

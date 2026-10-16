@@ -140,7 +140,7 @@ class Trainer:
         if self.dead_at_init is None:
             self.dead_at_init = ~active
         record = {"step": self.step, "seconds": round(self.seconds(), 1),
-                  "k": getattr(self.model, "k", 1),
+                  "k": getattr(self.model, "k", None if self.model.kind == "l1" else 1),
                   "minibatch_loss": loss, "minibatch_mse": mse,
                   **summarize(sq_err, l0, active, self.E, self.p),
                   **revival(self.dead_at_init, changed_features(self.init_state, self.model))}
@@ -301,8 +301,9 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
             f"{per_step:.2f} s/step | elapsed {fmt_duration(tr.seconds())} | "
             f"ETA {fmt_duration(eta)} (about {finish}) | minibatch loss {loss:.4g} | "
             f"last eval (step {last['step']:,}): rel_loss {last['rel_loss']:.4g}, "
-            f"alive {last['n_alive']:,}, revived {last['n_revived']:,}/"
-            f"{last['n_dead_at_init']:,} ({last['revival_pct']:.2f}%)")
+            f"active per token {last['mean_l0']:.3g}, alive {last['n_alive']:,}"
+            + (f", revived {last['n_revived']:,}/{last['n_dead_at_init']:,} "
+               f"({last['revival_pct']:.2f}%)" if last["n_dead_at_init"] else ""))
 
     stop = _StopOnInterrupt(log)
     with stop:
