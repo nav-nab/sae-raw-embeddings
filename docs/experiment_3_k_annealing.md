@@ -35,6 +35,21 @@ Raising $k$ keeps more features alive and lowers the loss, but recovery falls an
 
 These are subset results. The full table has 50,257 features in the same 768 dimensions, so the share of features that stays alive may differ at full scale.
 
+## Schedule tests on the subset
+
+These runs used the same 2,000-token subset with $m = 2{,}000$, 4,000 steps at batch size 512 and the same seed. Every annealed run started at $k_0 = 32$ and ended at $k = 1$, so all are judged as Top1 models at the end.
+
+| Run | Schedule | Alive at end (of 2,000) | Recovered at cosine > 0.9 | Recovered at cosine > 0.99 | Relative loss |
+|---|---|---|---|---|---|
+| Baseline | Fixed $k = 1$ | 382 | 227 | 113 | 0.447 |
+| A | Halving $32 \to 16 \to 8 \to 4 \to 2 \to 1$, reaching 1 at 50% of training | 1,377 | 1,325 | 1,011 | 0.085 |
+| B | Same halving, reaching 1 at 80% of training | 1,414 | 1,362 | 1,068 | 0.079 |
+| C | Linear from 32 to 1, reaching 1 at 50% of training | 1,188 | 1,057 | 776 | 0.132 |
+
+Annealing works on the subset. The best schedule, B, recovers 1,362 tokens at cosine above 0.9, six times the baseline.
+
+The trajectories show where features are lost. About 1,775 features stay alive through the high-$k$ phase in every run. Most of the loss happens at the final step from $k = 2$ to $k = 1$, where B drops from 1,731 to 1,412 alive features. The linear schedule passes through the small values of $k$ fastest, and it does worst.
+
 ## Design
 
 The same as Experiment 1, except for the encoder and the schedule:

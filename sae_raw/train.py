@@ -77,6 +77,24 @@ class FrequencySampler:
         return torch.searchsorted(self.cdf, u, right=True)
 
 
+def k_schedule(step, steps, k0, end_frac, shape):
+    """Number of active features k at a training step (1-based), for k-annealing.
+
+    k starts at k0 and reaches 1 after a fraction end_frac of the steps, then
+    stays at 1. shape is "halving" (k0, k0/2, ..., 2 in equal stages, k0 a
+    power of 2) or "linear" (rounded to the nearest integer).
+    """
+    t = (step - 1) / steps / end_frac  # progress through the decrease, 0 to 1
+    if t >= 1:
+        return 1
+    if shape == "linear":
+        return max(1, round(k0 - (k0 - 1) * t))
+    if shape == "halving":
+        levels = [k0 >> i for i in range(int(math.log2(k0)))]  # k0, ..., 2
+        return levels[int(t * len(levels))]
+    raise ValueError(f"unknown schedule shape {shape!r}")
+
+
 def train_step(model, optimizer, x):
     """One optimiser step with the unit-norm decoder constraint. Returns (loss, mse)."""
     loss, mse = model.loss(x)
@@ -122,6 +140,7 @@ class Trainer:
         if self.dead_at_init is None:
             self.dead_at_init = ~active
         record = {"step": self.step, "seconds": round(self.seconds(), 1),
+                  "k": getattr(self.model, "k", 1),
                   "minibatch_loss": loss, "minibatch_mse": mse,
                   **summarize(sq_err, l0, active, self.E, self.p),
                   **revival(self.dead_at_init, changed_features(self.init_state, self.model))}
@@ -195,7 +214,7 @@ class _StopOnInterrupt:
 
 def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None, k=None,
           counts=None, device="cpu", run_dir=None, checkpoint_every=600,
-          heartbeat_every=60, extra_eta_seconds=0.0, log=print):
+          heartbeat_every=60, extra_eta_seconds=0.0, schedule=None, log=print):
     """Train an SAE with m = V on the rows of E.
 
     model is "top1" (Experiment 1), "l1" (Experiment 2, needs l1_coef) or
@@ -210,9 +229,16 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     exists. heartbeat_every sets the interval of the progress line, whose ETA
     includes extra_eta_seconds for work after training.
 
+    schedule, for the "topk" model only, is a dict with keys k0, end_frac and
+    shape (see k_schedule). k then follows the schedule, and k is ignored.
+
     Returns (model, history, finished). finished is False if the run was
     interrupted; call train() again with the same run_dir to continue.
     """
+    if schedule is not None:
+        if model != "topk":
+            raise ValueError("a k schedule needs the topk model")
+        k = schedule["k0"]
     tr = Trainer(E, lr, seed, model=model, l1_coef=l1_coef, k=k, counts=counts, device=device)
     if run_dir is not None:
         run_dir = Path(run_dir)
@@ -238,6 +264,8 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
             _atomic_save(tr.state_dict(), run_dir / CHECKPOINT_FILE)
             log(f"Checkpoint saved at step {tr.step:,} ({reason}, {time.time() - t0:.0f}s).")
 
+    if schedule is not None and tr.step > 0:  # resuming part-way through the schedule
+        tr.model.k = k_schedule(tr.step, steps, **schedule)
     if not tr.history:
         after_eval(tr.evaluate())
 
@@ -268,6 +296,8 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     with stop:
         while tr.step < steps and not stop.requested:
             t0 = time.time()
+            if schedule is not None:
+                tr.model.k = k_schedule(tr.step + 1, steps, **schedule)
             loss, mse = tr.train_step(batch_size)
             step_time += time.time() - t0
             if tr.step % eval_every == 0 or tr.step == steps:

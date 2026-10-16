@@ -6,7 +6,7 @@ from sae_raw import data
 from sae_raw.evaluation import (changed_features, full_pass, recovery, recovery_summary,
                                 revival, summarize)
 from sae_raw.model import ReLUSAE, Top1SAE
-from sae_raw.train import FrequencySampler, UniformSampler, default_lr, train
+from sae_raw.train import FrequencySampler, UniformSampler, default_lr, k_schedule, train
 
 
 def test_sampler_is_uniform_and_in_range():
@@ -225,3 +225,36 @@ def test_topk_training_reduces_loss_and_resumes(tmp_path):
     train(E, steps=15, run_dir=tmp_path, **kw)
     res, _, _ = train(E, steps=30, run_dir=tmp_path, **kw)
     assert torch.equal(ref.W_dec, res.W_dec)
+
+
+def test_k_schedule_halving_and_linear():
+    ks = [k_schedule(s, 100, 32, 0.5, "halving") for s in range(1, 101)]
+    assert ks[:10] == [32] * 10 and ks[10:20] == [16] * 10 and ks[40:50] == [2] * 10
+    assert set(ks[50:]) == {1}
+    lin = [k_schedule(s, 100, 32, 0.5, "linear") for s in range(1, 101)]
+    assert lin[0] == 32 and lin[25] == 16 and set(lin[50:]) == {1}
+    assert all(a >= b for a, b in zip(lin, lin[1:]))
+
+
+def test_scheduled_training_reaches_k1_and_resumes_identically(tmp_path):
+    E = _tiny_problem()
+    sched = dict(k0=8, end_frac=0.5, shape="halving")
+    kw = dict(batch_size=32, lr=1e-2, seed=0, eval_every=10, model="topk", schedule=sched,
+              log=lambda *_: None)
+    ref, hist, _ = train(E, steps=40, **kw)
+    assert [h["k"] for h in hist] == [8, 4, 2, 1, 1] and hist[-1]["mean_l0"] <= 1
+    _, _, done = train(E, steps=40, run_dir=tmp_path, heartbeat_every=0,
+                       **{**kw, "log": _stop_after(13)})
+    assert not done
+    res, _, done = train(E, steps=40, run_dir=tmp_path, **kw)
+    assert done and torch.equal(ref.W_dec, res.W_dec) and torch.equal(ref.W_enc, res.W_enc)
+
+
+def _stop_after(step):
+    import os
+    import signal
+
+    def log(msg):
+        if msg.startswith(f"step {step}/"):
+            os.kill(os.getpid(), signal.SIGINT)
+    return log
