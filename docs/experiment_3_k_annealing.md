@@ -1,6 +1,6 @@
 # Experiment 3: TopK with k-annealing
 
-Status: planning. The schedule is to be decided.
+Status: planning. Schedule chosen (schedule B below); the script is to be written.
 
 ## Motivation
 
@@ -59,13 +59,15 @@ The same as Experiment 1, except for the encoder and the schedule:
 - **Loss:** plain MSE.
 - **Initialisation:** as in Experiment 1, with the same seed. The initial parameters are saved to `init.pt`.
 - **Training:** Adam with the Gao et al. learning rate, batch size 4096, one seed, a budget of about 10 hours on the laptop.
-- **Schedule:** $k$ starts at $k_0$ and decreases to 1 by some point in training, then stays at 1. The measurements above suggest $k_0 = 16$, which keeps about three quarters of features alive on the subset. To be decided: $k_0$, the shape of the decrease, and when it reaches 1.
+- **Schedule (B):** $k$ halves from $k_0 = 32$ through 16, 8, 4 and 2, in five equal stages, and reaches 1 at 80% of training. It stays at 1 for the last 20%.
 - **Measurement:** as in Experiment 1. Alive features and active features per token are logged throughout. Revival, loss and decoder recovery are measured at the end, once $k = 1$.
 
 ## Decisions
 
 - Fixed-$k$ TopK dropped in favour of $k$-annealing, based on the measurements above.
-- To be decided: the schedule.
+- $k_0 = 32$.
+- Schedule B: halving, reaching $k = 1$ at 80% of training. It did best of the three schedules tested on the subset.
+- To revisit later: spending longer at $k = 2$. Most features that die are lost at the final step from $k = 2$ to $k = 1$, so a longer stage at $k = 2$ might keep more of them.
 
 ## Code
 

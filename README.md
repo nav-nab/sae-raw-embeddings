@@ -112,6 +112,7 @@ The final analysis recomputes revival from `init.pt` and `model.pt`. It also mea
 
 Ideas to revisit after the experiments above. Each one changes the training recipe or the setting, so each would be reported as a labelled ablation.
 
+- **Longer time at $k = 2$ in Experiment 3's schedule.** On the subset, most features that die are lost at the final step from $k = 2$ to $k = 1$. A longer stage at $k = 2$ might keep more of them.
 - **Encoder-side mean centring.** Initialise the encoder bias as $b_{\mathrm{enc},j} = -w_j^\top\mu$, where $\mu$ is the data mean, and keep the decoder bias at zero. This removes the shared mean component that makes a few features win most tokens. It leaves the target dictionary unchanged.
 
 ## Status
@@ -124,4 +125,5 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 1 full run (results in `docs/experiment_1_results.md`)
 - [ ] Experiment 2 design questions ($\lambda$, learning rate, recovery threshold)
 - [ ] Experiment 2 script
-- [ ] Experiment 3: the $k$ schedule, then the script
+- [x] Experiment 3: $k$ schedule chosen (halving from 32, reaching 1 at 80% of training)
+- [ ] Experiment 3 script
