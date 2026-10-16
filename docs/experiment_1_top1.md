@@ -1,5 +1,7 @@
 # Experiment 1: how many dead Top1 features revive?
 
+Results: `docs/experiment_1_results.md`.
+
 ## Motivation
 
 The project asks whether gradient descent can find a known global minimum. We train a Top1 SAE ($k = 1$) with $m = V$ features on the GPT-2 Small token embedding table. With unit-norm decoder rows and zero decoder bias, the zero-loss dictionary is the set of normalised embeddings. So the answer is known, and the question is whether training finds it.
@@ -37,4 +39,4 @@ The script prepares the data if needed and times the machine to fit the 10-hour 
 
 ## Next step
 
-If the revival percentage is below 80%, we move on to Experiment 2. It replaces the Top1 encoder with an L1-penalised ReLU encoder.
+If the revival percentage is below 80%, we move on to Experiment 2. It replaces the Top1 encoder with an L1-penalised ReLU encoder. (The result was 0%. Experiment 3, a TopK SAE with $k$ annealed to 1, was added afterwards.)

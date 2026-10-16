@@ -1,6 +1,6 @@
 # Experiment 3: TopK with k-annealing
 
-Status: planning. Schedule chosen (schedule B below); the script is to be written.
+Status: ready to run. Schedule chosen (schedule B below) and script written.
 
 ## Motivation
 
@@ -60,7 +60,7 @@ The same as Experiment 1, except for the encoder and the schedule:
 - **Initialisation:** as in Experiment 1, with the same seed. The initial parameters are saved to `init.pt`.
 - **Training:** Adam with the Gao et al. learning rate, batch size 4096, one seed, a budget of about 10 hours on the laptop.
 - **Schedule (B):** $k$ halves from $k_0 = 32$ through 16, 8, 4 and 2, in five equal stages, and reaches 1 at 80% of training. It stays at 1 for the last 20%.
-- **Measurement:** as in Experiment 1. Alive features and active features per token are logged throughout. Revival, loss and decoder recovery are measured at the end, once $k = 1$.
+- **Measurement:** as in Experiment 1. The current $k$, alive features and active features per token are logged at every evaluation. Loss, alive features and decoder recovery are measured at the end, once $k = 1$. Features dead at initialisation are judged at $k_0 = 32$.
 
 ## Decisions
 
@@ -69,6 +69,16 @@ The same as Experiment 1, except for the encoder and the schedule:
 - Schedule B: halving, reaching $k = 1$ at 80% of training. It did best of the three schedules tested on the subset.
 - To revisit later: spending longer at $k = 2$. Most features that die are lost at the final step from $k = 2$ to $k = 1$, so a longer stage at $k = 2$ might keep more of them.
 
+## How to run
+
+```
+caffeinate -i python experiments/exp3_k_annealing/run.py
+```
+
+The script prepares the data if needed and times a few steps at each $k$ of the schedule, since steps at large $k$ are slower. It then chooses the number of steps that fits the 10-hour budget. Training runs with a checkpoint every 10 minutes and a heartbeat every minute that shows the current $k$. The script finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp3/`. `--k0`, `--end-frac` and `--shape` change the schedule.
+
+**Expected cost.** In the sandbox at full scale and batch size 4096, a step took 4.6 s at $k = 32$, about 3.3 s at $k = 16$ down to $k = 2$, and 2.7 s at $k = 1$. The mean over schedule B is 3.4 s, about 25% more than a Top1 step. Peak memory was about 3.7 GB. The laptop ran Top1 steps about 20% faster than the sandbox, so it should fit roughly 13,000 steps into 10 hours. The script measures this itself before training.
+
 ## Code
 
-`experiments/exp3_k_annealing/` (script to be written). The model is `TopKSAE` in `sae_raw/model.py`, which is written and tested. With $k = 1$ it matches `Top1SAE`.
+`experiments/exp3_k_annealing/run.py` describes the experiment and calls the shared runner in `sae_raw/run.py`. The model is `TopKSAE` in `sae_raw/model.py`; with $k = 1$ it matches `Top1SAE`. The schedule is `k_schedule` in `sae_raw/train.py`.

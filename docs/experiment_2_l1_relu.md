@@ -1,6 +1,6 @@
 # Experiment 2: an L1-penalised ReLU SAE
 
-This experiment runs if fewer than 80% of the Top1 features that are dead at initialisation revive in Experiment 1.
+This experiment runs if fewer than 80% of the Top1 features that are dead at initialisation revive in Experiment 1. None revived (`docs/experiment_1_results.md`), so it goes ahead.
 
 ## Motivation
 
@@ -34,7 +34,7 @@ Different from Experiment 1:
 
 ## How to run
 
-A single script, `experiments/exp2_l1_relu/run.py`, will run this experiment in the same way as Experiment 1. It will be written once Experiment 1 is done and the design questions below are settled.
+A single script, `experiments/exp2_l1_relu/run.py`, will run this experiment through the same shared runner as Experiments 1 and 3. It will be written once the design questions below are settled.
 
 ## Open design questions
 

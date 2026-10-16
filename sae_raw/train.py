@@ -214,7 +214,8 @@ class _StopOnInterrupt:
 
 def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None, k=None,
           counts=None, device="cpu", run_dir=None, checkpoint_every=600,
-          heartbeat_every=60, extra_eta_seconds=0.0, schedule=None, log=print):
+          heartbeat_every=60, extra_eta_seconds=0.0, schedule=None, step_seconds_by_k=None,
+          log=print):
     """Train an SAE with m = V on the rows of E.
 
     model is "top1" (Experiment 1), "l1" (Experiment 2, needs l1_coef) or
@@ -231,6 +232,9 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
 
     schedule, for the "topk" model only, is a dict with keys k0, end_frac and
     shape (see k_schedule). k then follows the schedule, and k is ignored.
+    step_seconds_by_k optionally maps each k in the schedule to a measured
+    step time. The heartbeat then estimates the time left from these, scaled
+    to the speed observed so far, since steps at large k are slower.
 
     Returns (model, history, finished). finished is False if the run was
     interrupted; call train() again with the same run_dir to continue.
@@ -271,6 +275,9 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
 
     # Timing for the heartbeat, measured in this session only.
     session_step0, step_time, eval_time = tr.step, 0.0, None
+    use_k_timing = schedule is not None and step_seconds_by_k is not None
+    k_at = (lambda s: k_schedule(s, steps, **schedule)) if schedule is not None else None
+    expected_done = 0.0  # sum of measured step times over the steps done this session
     remaining_evals = lambda: (sum(1 for s in range(tr.step + 1, steps + 1)
                                    if s % eval_every == 0 or s == steps))
     last_ckpt = last_beat = time.time()
@@ -281,11 +288,16 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
         if done == 0:
             return
         per_step = step_time / done
-        eta = ((steps - tr.step) * per_step + remaining_evals() * (eval_time or 0.0)
-               + extra_eta_seconds)
+        if use_k_timing:
+            remaining = sum(step_seconds_by_k[k_at(s)] for s in range(tr.step + 1, steps + 1))
+            train_left = remaining * step_time / expected_done
+        else:
+            train_left = (steps - tr.step) * per_step
+        eta = train_left + remaining_evals() * (eval_time or 0.0) + extra_eta_seconds
         finish = (datetime.now() + timedelta(seconds=eta)).strftime("%a %H:%M")
         last = tr.history[-1]
-        log(f"step {tr.step:,}/{steps:,} ({100 * tr.step / steps:.1f}%) | "
+        k_now = f"k={tr.model.k} | " if schedule is not None else ""
+        log(f"step {tr.step:,}/{steps:,} ({100 * tr.step / steps:.1f}%) | {k_now}"
             f"{per_step:.2f} s/step | elapsed {fmt_duration(tr.seconds())} | "
             f"ETA {fmt_duration(eta)} (about {finish}) | minibatch loss {loss:.4g} | "
             f"last eval (step {last['step']:,}): rel_loss {last['rel_loss']:.4g}, "
@@ -300,6 +312,8 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
                 tr.model.k = k_schedule(tr.step + 1, steps, **schedule)
             loss, mse = tr.train_step(batch_size)
             step_time += time.time() - t0
+            if use_k_timing:
+                expected_done += step_seconds_by_k[tr.model.k]
             if tr.step % eval_every == 0 or tr.step == steps:
                 t0 = time.time()
                 after_eval(tr.evaluate(loss, mse))

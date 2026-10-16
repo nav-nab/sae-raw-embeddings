@@ -1,27 +1,41 @@
-"""Helpers shared by the experiment scripts (experiments/<experiment>/run.py).
+"""The shared runner behind the experiment scripts (experiments/<experiment>/run.py).
 
-Each experiment script does everything for one experiment: data preparation
-if needed, timing the machine to fit a time budget, resumable training with
-checkpoints and a heartbeat, and the final analysis. This module holds the
-parts that do not depend on the experiment.
+Each experiment script describes one experiment (its model, schedule and how
+to report the result) and calls run_experiment(). The runner does every step:
+
+1. prepares the data if it is missing;
+2. times a few training steps on this machine and chooses the number of steps
+   that fits in --hours (unless --steps is given);
+3. trains with checkpoints every 10 minutes and a heartbeat every minute.
+   Ctrl-C saves and stops, and running the same command again resumes with
+   the settings saved in the run directory;
+4. analyses the result and writes analysis.json.
+
+Everything is logged to the console and to <run-dir>/run.log.
 """
 
+import argparse
 import json
 import logging
+import platform
 import sys
 import time
 from pathlib import Path
 
 import torch
 
+from sae_raw import data
+from sae_raw.evaluation import analyse
 from sae_raw.model import build_model
 from sae_raw.train import (CHECKPOINT_FILE, EVAL_LOG_FILE, INIT_FILE, MODEL_FILE,
-                           FrequencySampler, Trainer, UniformSampler, default_lr)
+                           FrequencySampler, Trainer, UniformSampler, default_lr, fmt_duration,
+                           k_schedule, train)
 
 CONFIG_FILE = "config.json"
 ANALYSIS_FILE = "analysis.json"
 LOG_FILE = "run.log"
 RUN_FILES = (CONFIG_FILE, INIT_FILE, CHECKPOINT_FILE, MODEL_FILE, EVAL_LOG_FILE, ANALYSIS_FILE)
+ANALYSIS_EVALS = 3  # the final analysis costs about this many evaluations
 
 
 def setup_logging(run_dir):
@@ -47,8 +61,12 @@ def clear_run(run_dir):
             path.unlink()
 
 
-def time_training(E, batch_size, model="top1", l1_coef=None, k=None, n_steps=3, device="cpu"):
-    """Seconds per training step and per full evaluation, on a throwaway model."""
+def time_training(E, batch_size, model="top1", l1_coef=None, k=None, n_steps=3, device="cpu",
+                  evaluate=True):
+    """Seconds per training step and per full evaluation, on a throwaway model.
+
+    With evaluate=False the evaluation is skipped and its time returned as None.
+    """
     tr = Trainer(E, lr=default_lr(len(E)), seed=0, model=model, l1_coef=l1_coef, k=k,
                  device=device)
     tr.train_step(batch_size)  # warm-up
@@ -56,6 +74,8 @@ def time_training(E, batch_size, model="top1", l1_coef=None, k=None, n_steps=3, 
     for _ in range(n_steps):
         tr.train_step(batch_size)
     step_s = (time.time() - t0) / n_steps
+    if not evaluate:
+        return step_s, None
     t0 = time.time()
     tr.evaluate()
     return step_s, time.time() - t0
@@ -65,12 +85,22 @@ def plan_steps(hours, step_s, eval_s, n_evals, extra_evals=0):
     """Choose (steps, eval_every) so that training plus evaluations fit in the budget.
 
     steps is a multiple of eval_every, giving exactly n_evals evaluations
-    after step 0. extra_evals reserves time for work after training,
-    counted in units of one evaluation.
+    after step 0. step_s is the mean time per step. extra_evals reserves time
+    for work after training, counted in units of one evaluation.
     """
     budget = hours * 3600 - (n_evals + 1 + extra_evals) * eval_s
     eval_every = max(int(budget / step_s) // n_evals, 1)
     return eval_every * n_evals, eval_every
+
+
+def mean_step_seconds(step_seconds_by_k, schedule, n=1000):
+    """Mean step time over a schedule, given the step time at each k."""
+    return sum(step_seconds_by_k[k_schedule(s, n, **schedule)] for s in range(1, n + 1)) / n
+
+
+def schedule_ks(schedule, n=1000):
+    """The distinct values of k a schedule passes through, largest first."""
+    return sorted({k_schedule(s, n, **schedule) for s in range(1, n + 1)}, reverse=True)
 
 
 def load_config(run_dir):
@@ -86,8 +116,149 @@ def token_weights(V, counts=None):
     return UniformSampler(V, 0).p if counts is None else FrequencySampler(counts, 0).p
 
 
-def load_model_file(path, cfg, d, m):
-    model = build_model(cfg["model"], d, m, l1_coef=cfg.get("l1_coef"), k=cfg.get("k"))
+def load_model_file(path, cfg, d, m, k=None):
+    """Load saved parameters into a model built from cfg (k overrides cfg["k"])."""
+    model = build_model(cfg["model"], d, m, l1_coef=cfg.get("l1_coef"),
+                        k=k if k is not None else cfg.get("k"))
     model.load_state_dict(torch.load(path, map_location="cpu"))
     return model
 
+
+def _parser(description, default_run_dir, schedule):
+    p = argparse.ArgumentParser(description=description,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--run-dir", default=default_run_dir)
+    p.add_argument("--data-dir", default="data")
+    p.add_argument("--hours", type=float, default=10.0, help="time budget for the whole run")
+    p.add_argument("--steps", type=int, default=None,
+                   help="number of training steps (default: chosen from --hours)")
+    p.add_argument("--n-evals", type=int, default=20,
+                   help="full-vocabulary evaluations during training, after step 0")
+    p.add_argument("--batch-size", type=int, default=4096)
+    p.add_argument("--lr", type=float, default=None,
+                   help="default: 2e-4 / sqrt(m / 2^14), the Gao et al. rule")
+    p.add_argument("--seed", type=int, default=0)
+    if schedule is not None:
+        p.add_argument("--k0", type=int, default=schedule["k0"], help="starting k")
+        p.add_argument("--end-frac", type=float, default=schedule["end_frac"],
+                       help="fraction of training after which k = 1")
+        p.add_argument("--shape", choices=["halving", "linear"], default=schedule["shape"])
+    p.add_argument("--subset", type=int, default=0,
+                   help="debugging: train on the N most frequent tokens only, with m = N")
+    p.add_argument("--frequency-weighted", action="store_true",
+                   help="sample tokens by Wikipedia frequency and weight evaluation the same "
+                        "way (off in the experiment design)")
+    p.add_argument("--checkpoint-minutes", type=float, default=10.0)
+    p.add_argument("--heartbeat-seconds", type=float, default=60.0)
+    p.add_argument("--device", default="cpu")
+    p.add_argument("--fresh", action="store_true",
+                   help="discard any earlier run in --run-dir and start again")
+    return p
+
+
+def run_experiment(name, description, default_run_dir, model, report, schedule=None,
+                   argv=None):
+    """Run one experiment end to end (see the module docstring).
+
+    model is "top1" or "topk". For "topk", schedule is the default k schedule
+    (keys k0, end_frac, shape), which can be changed on the command line.
+    report(result, log) logs the experiment-specific conclusion.
+    """
+    args = _parser(description, default_run_dir, schedule).parse_args(argv)
+    run_dir = Path(args.run_dir)
+    log = setup_logging(run_dir)
+    log("=" * 70)
+    log(f"{name}: run directory {run_dir}")
+
+    if args.fresh:
+        clear_run(run_dir)
+        log("--fresh: removed the files of the earlier run.")
+
+    resuming = (run_dir / CONFIG_FILE).exists()
+    cfg = load_config(run_dir) if resuming else None
+    data_dir = cfg["data_dir"] if resuming else args.data_dir
+    if not data.is_prepared(data_dir):
+        log(f"No prepared data in {data_dir}; preparing it now.")
+        data.prepare(data_dir, log=log)
+
+    if resuming:
+        log("Found an earlier run: resuming with its saved settings "
+            "(command-line training options are ignored; use --fresh to start again).")
+        E, counts = data.load_prepared(data_dir, cfg["subset"])
+    else:
+        E, counts = data.load_prepared(data_dir, args.subset)
+        cfg = _new_config(name, model, schedule, args, E, log)
+        save_config(run_dir, cfg)
+
+    sched = cfg.get("schedule")
+    by_k = {int(k): v for k, v in cfg["step_seconds_by_k"].items()} if sched else None
+    log("Settings: " + json.dumps({k: cfg.get(k) for k in (
+        "V", "batch_size", "lr", "seed", "steps", "eval_every", "schedule", "subset",
+        "frequency_weighted")}))
+    train_counts = counts if cfg["frequency_weighted"] else None
+
+    _, history, finished = train(
+        E, steps=cfg["steps"], batch_size=cfg["batch_size"], lr=cfg["lr"], seed=cfg["seed"],
+        eval_every=cfg["eval_every"], model=cfg["model"], k=cfg.get("k"), schedule=sched,
+        counts=train_counts, device=cfg["device"], run_dir=run_dir,
+        checkpoint_every=60 * cfg["checkpoint_minutes"], heartbeat_every=cfg["heartbeat_seconds"],
+        extra_eta_seconds=ANALYSIS_EVALS * cfg["eval_seconds"], step_seconds_by_k=by_k, log=log)
+    if not finished:
+        return None
+
+    log("Training finished. Analysing ...")
+    Et = torch.as_tensor(E, dtype=torch.float32)
+    V, d = Et.shape
+    # Features dead at initialisation are judged at the starting k; the final model at its last k.
+    init = load_model_file(run_dir / INIT_FILE, cfg, d, V, k=sched["k0"] if sched else None)
+    final = load_model_file(run_dir / MODEL_FILE, cfg, d, V, k=1 if sched else None)
+    result = analyse(init, final, Et, token_weights(V, train_counts))
+    result["training_hours"] = round(history[-1]["seconds"] / 3600, 2)
+    (run_dir / ANALYSIS_FILE).write_text(json.dumps(result, indent=2))
+    for key, value in result.items():
+        log(f"  {key:>22}: {value:.4g}" if isinstance(value, float) else f"  {key:>22}: {value}")
+    report(result, log)
+    return result
+
+
+def _new_config(name, model, schedule, args, E, log):
+    V = E.shape[0]
+    sched = None
+    if schedule is not None:
+        sched = {"k0": args.k0, "end_frac": args.end_frac, "shape": args.shape}
+    cfg = {
+        "experiment": name, "model": model, "l1_coef": None, "k": sched["k0"] if sched else None,
+        "schedule": sched, "data_dir": args.data_dir, "subset": args.subset, "V": V,
+        "d": E.shape[1], "batch_size": args.batch_size, "lr": args.lr or default_lr(V),
+        "seed": args.seed, "frequency_weighted": args.frequency_weighted, "hours": args.hours,
+        "n_evals": args.n_evals, "checkpoint_minutes": args.checkpoint_minutes,
+        "heartbeat_seconds": args.heartbeat_seconds, "device": args.device,
+        "python": platform.python_version(), "torch": torch.__version__,
+        "threads": torch.get_num_threads(), "started": time.strftime("%Y-%m-%d %H:%M"),
+    }
+    log(f"Timing {args.batch_size}-token steps on {V:,} tokens "
+        f"({torch.get_num_threads()} threads) ...")
+    if sched is None:
+        step_s, eval_s = time_training(E, args.batch_size, model=model, device=args.device)
+        log(f"  {step_s:.2f} s per step, {eval_s:.0f} s per evaluation")
+    else:
+        by_k = {}
+        for k in schedule_ks(sched):
+            by_k[k], ev = time_training(E, args.batch_size, model="topk", k=k,
+                                        device=args.device, evaluate=(k == 1))
+            if ev is not None:
+                eval_s = ev
+            log(f"  k = {k}: {by_k[k]:.2f} s per step")
+        cfg["step_seconds_by_k"] = {str(k): round(v, 3) for k, v in by_k.items()}
+        step_s = mean_step_seconds(by_k, sched)
+        log(f"  mean over the schedule: {step_s:.2f} s per step; {eval_s:.0f} s per evaluation")
+    cfg.update(step_seconds=round(step_s, 3), eval_seconds=round(eval_s, 1))
+    if args.steps is None:
+        cfg["steps"], cfg["eval_every"] = plan_steps(
+            args.hours, step_s, eval_s, args.n_evals, extra_evals=ANALYSIS_EVALS)
+    else:
+        cfg["steps"], cfg["eval_every"] = args.steps, max(args.steps // args.n_evals, 1)
+    expected = cfg["steps"] * step_s + (args.n_evals + 1 + ANALYSIS_EVALS) * eval_s
+    log(f"  {cfg['steps']:,} steps, evaluation every {cfg['eval_every']:,}, "
+        f"expected {fmt_duration(expected)}.")
+    return cfg

@@ -2,4 +2,4 @@
 
 Plan: `docs/experiment_2_l1_relu.md`.
 
-The script for this experiment, `run.py`, is not written yet. It will be written once Experiment 1 is done and the open design questions are settled: $\lambda$, the learning rate and the recovery threshold. It will have the same structure as `experiments/exp1_top1/run.py`, and use the `ReLUSAE` model from the shared library (`sae_raw/model.py`), which is already written and tested.
+The script for this experiment, `run.py`, is not written yet. It will be written once the open design questions are settled: $\lambda$, the learning rate and the recovery threshold. Like `experiments/exp1_top1/run.py` and `experiments/exp3_k_annealing/run.py`, it will describe the experiment and call the shared runner in `sae_raw/run.py`. It will use the `ReLUSAE` model from the shared library (`sae_raw/model.py`), which is already written and tested.

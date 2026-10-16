@@ -59,3 +59,37 @@ def test_experiment_1_frequency_toggle(tmp_path):
     counts = np.load(tmp_path / "data" / "token_counts.npy")
     result = json.loads((tmp_path / "run" / "analysis.json").read_text())
     assert result["n_tokens"] == int((counts > 0).sum())
+
+
+def _run_exp3(*args):
+    return subprocess.run([sys.executable, str(REPO / "experiments" / "exp3_k_annealing" / "run.py"),
+                           *args], capture_output=True, text=True, cwd=REPO, timeout=300)
+
+
+def test_experiment_3_script_end_to_end_with_schedule_and_resume(tmp_path):
+    _fake_data(tmp_path / "data")
+    common = ["--data-dir", str(tmp_path / "data"), "--run-dir", str(tmp_path / "run"),
+              "--batch-size", "16", "--n-evals", "4", "--k0", "4"]
+    r = _run_exp3(*common, "--steps", "40", "--heartbeat-seconds", "0")
+    assert r.returncode == 0, r.stderr
+    run = tmp_path / "run"
+    cfg = json.loads((run / "config.json").read_text())
+    assert cfg["schedule"] == {"k0": 4, "end_frac": 0.8, "shape": "halving"}
+    assert set(cfg["step_seconds_by_k"]) == {"4", "2", "1"}
+    log = (run / "run.log").read_text()
+    assert "k=4" in log and "k=1" in log and "Result:" in log
+    result = json.loads((run / "analysis.json").read_text())
+    assert result["mean_l0"] <= 1  # the final model is Top1
+    rows = (run / "eval_log.csv").read_text().splitlines()
+    assert rows[1].split(",")[2] == "4" and rows[-1].split(",")[2] == "1"  # k column
+    r = _run_exp3(*common)
+    assert r.returncode == 0 and "resuming with its saved settings" in r.stdout
+
+
+def test_schedule_helpers():
+    from sae_raw.run import mean_step_seconds, schedule_ks
+    sched = {"k0": 32, "end_frac": 0.8, "shape": "halving"}
+    assert schedule_ks(sched) == [32, 16, 8, 4, 2, 1]
+    by_k = {32: 5.0, 16: 3.0, 8: 2.0, 4: 1.5, 2: 1.2, 1: 1.0}
+    expected = 0.16 * (5 + 3 + 2 + 1.5 + 1.2) + 0.2 * 1.0
+    assert abs(mean_step_seconds(by_k, sched) - expected) < 0.01  # stage edges round
