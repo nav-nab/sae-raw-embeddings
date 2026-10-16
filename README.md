@@ -10,6 +10,9 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 
 - **Experiment 1** (plan `docs/experiment_1_top1.md`, code `experiments/exp1_top1/`, results `docs/experiment_1_results.md`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measures what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
 - **Experiment 2** (plan `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, not written yet): an L1-penalised ReLU SAE with the same data, dictionary and initialisation. It runs if fewer than 80% of the dead features revive in Experiment 1. Success is measured by decoder recovery, since the loss cannot reach zero.
+- **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, planning): as Experiment 1, but with a TopK encoder whose $k$ starts large, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery.
+
+`docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each.
 
 Shared choices:
 
@@ -22,8 +25,8 @@ Shared choices:
 ```
 sae_raw/              shared library code
   data.py             GPT-2 embedding table, Wikipedia token counts, diagnostics, subsets
-  model.py            Top1SAE (Experiment 1) and ReLUSAE (Experiment 2): shared initialisation
-                      and unit-norm decoder
+  model.py            Top1SAE (Experiment 1), ReLUSAE (Experiment 2) and TopKSAE
+                      (Experiment 3): shared initialisation and unit-norm decoder
   train.py            samplers and the resumable training loop (checkpoints, heartbeat)
   evaluation.py       full-vocabulary summary, revival of dead features, decoder recovery
   run.py              helpers for the experiment scripts: logging, timing, run settings
@@ -35,7 +38,9 @@ scripts/
 docs/
   experiment_1_top1.md      plan: how many dead Top1 features revive?
   experiment_1_results.md   results and interpretation of Experiment 1
+  failure_modes.md          running table of failed attempts and why they failed
   experiment_2_l1_relu.md   plan: L1-penalised ReLU SAE (runs if revival is below 80%)
+  experiment_3_k_annealing.md  plan: TopK with k lowered to 1 during training
   planning/                 original planning documents, kept unchanged as a record
 tests/                pytest suite
 data/                 generated, not tracked by git
@@ -99,6 +104,7 @@ The final analysis recomputes revival from `init.pt` and `model.pt`. It also mea
 
 - **Shared:** random unit-norm Gaussian decoder rows, encoder copied from the decoder, encoder bias zero. No information from the embeddings is used, and both models start from identical parameters for the same seed. The gradient component along each decoder row is removed before each optimiser step, and rows are renormalised after it. Adam with default betas and epsilon, one run per seed, no sweep.
 - **Top1** (`Top1SAE`, Experiment 1): the largest ReLU pre-activation wins, and its score is the coefficient. If no pre-activation is positive, the code and the reconstruction are zero. Ties go to the first index. Loss: MSE.
+- **TopK** (`TopKSAE`, Experiment 3): the $k$ largest pre-activations are selected and passed through a ReLU, so a selected feature with a non-positive pre-activation is inactive. With $k = 1$ it matches Top1. Loss: MSE.
 - **L1 ReLU** (`ReLUSAE`, Experiment 2): $f(x) = \mathrm{ReLU}(W_{\mathrm{enc}}x + b_{\mathrm{enc}})$, and the loss is MSE plus $\lambda \sum_j f_j$. The decoder is dense, so each step costs more than a Top1 step at the same batch size.
 - The exact solution ($W_{\mathrm{dec}} = W_{\mathrm{enc}} = $ normalised embeddings) is only used in tests.
 
@@ -111,10 +117,11 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 ## Status
 
 - [x] Data preparation
-- [x] Top1 and L1 ReLU models
+- [x] Top1, TopK and L1 ReLU models
 - [x] Resumable training loop with revival tracking, checkpoints and heartbeat
 - [x] Final analysis: revival and decoder recovery
 - [x] Experiment 1 script (budget: about 10 hours on the laptop)
 - [x] Experiment 1 full run (results in `docs/experiment_1_results.md`)
 - [ ] Experiment 2 design questions ($\lambda$, learning rate, recovery threshold)
 - [ ] Experiment 2 script
+- [ ] Experiment 3: the $k$ schedule, then the script

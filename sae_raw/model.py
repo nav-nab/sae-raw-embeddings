@@ -1,6 +1,8 @@
-"""Sparse autoencoders on the embedding table: Top1 (Experiment 1) and L1 ReLU (Experiment 2).
+"""Sparse autoencoders on the embedding table.
 
-Conventions shared by both models
+Top1 (Experiment 1), L1 ReLU (Experiment 2) and TopK (Experiment 3, with k annealed to 1).
+
+Conventions shared by all models
 ---------------------------------
 Feature j has an encoder row W_enc[j], an encoder bias b_enc[j] and a decoder
 row W_dec[j]. Both matrices have shape [m, d]. Decoder rows have unit norm and
@@ -10,7 +12,7 @@ of decoder rows.
 Initialisation uses no information about the data: decoder rows are isotropic
 Gaussian directions normalised to unit length, the encoder starts as a copy of
 the decoder, and the encoder bias is zero. Both matrices are then trained as
-separate parameters. With the same seed, both models start from identical
+separate parameters. With the same seed, all models start from identical
 parameters.
 
 Training rule for the unit-norm decoder, to be applied in this order:
@@ -33,6 +35,18 @@ Only the winner's parameters receive gradient. The winner is chosen without
 autograd and its score recomputed from the gathered encoder row, which gives
 the same gradients as the dense version (see tests) without a [B, m] gradient.
 
+TopKSAE, for a batch x of shape [B, d] (Top1SAE is the case k = 1):
+
+    a     = x @ W_enc.T + b_enc            pre-activations, [B, m]
+    J     = indices of the k largest a     selected features, [B, k]
+    coef  = relu(a[J])                     a selected feature with a <= 0 is inactive
+    x_hat = sum_{j in J} coef_j * W_dec[j]
+    loss  = |x - x_hat|^2                  (mean over the batch)
+
+Only the selected features with a positive coefficient receive gradient. As
+for Top1, the selection is made without autograd and the scores recomputed
+from the gathered encoder rows.
+
 ReLUSAE, for a batch x of shape [B, d]:
 
     f     = relu(x @ W_enc.T + b_enc)      code, [B, m]
@@ -48,7 +62,7 @@ from torch import nn
 
 
 class _UnitNormSAE(nn.Module):
-    """Parameters, initialisation and decoder constraint shared by both models."""
+    """Parameters, initialisation and decoder constraint shared by all models."""
 
     def __init__(self, d, m, seed=None):
         super().__init__()
@@ -138,6 +152,40 @@ class Top1SAE(_UnitNormSAE):
         return x_hat, on.long(), active
 
 
+class TopKSAE(_UnitNormSAE):
+    kind = "topk"
+
+    def __init__(self, d, m, k, seed=None):
+        super().__init__(d, m, seed=seed)
+        self.k = int(k)
+
+    @torch.no_grad()
+    def selected(self, x):
+        """Indices of the k features with the largest pre-activations, shape [B, k]."""
+        return (x @ self.W_enc.T + self.b_enc).topk(self.k, dim=1).indices
+
+    def forward(self, x):
+        """Return (x_hat, selected indices [B, k], coefficients [B, k])."""
+        idx = self.selected(x)
+        score = torch.einsum("bd,bkd->bk", x, self.W_enc[idx]) + self.b_enc[idx]
+        coef = torch.relu(score)
+        x_hat = torch.einsum("bk,bkd->bd", coef, self.W_dec[idx])
+        return x_hat, idx, coef
+
+    def loss(self, x):
+        x_hat, _, _ = self(x)
+        mse = _mse(x, x_hat)
+        return mse, mse
+
+    @torch.no_grad()
+    def activity(self, x):
+        x_hat, idx, coef = self(x)
+        on = coef > 0
+        active = torch.zeros(self.m, dtype=torch.bool, device=x.device)
+        active[idx[on]] = True
+        return x_hat, on.sum(dim=1), active
+
+
 class ReLUSAE(_UnitNormSAE):
     kind = "l1"
 
@@ -162,10 +210,14 @@ class ReLUSAE(_UnitNormSAE):
         return x_hat, on.sum(dim=1), on.any(dim=0)
 
 
-def build_model(kind, d, m, seed=None, l1_coef=None):
-    """Construct a model by name: "top1" or "l1" (the latter needs l1_coef)."""
+def build_model(kind, d, m, seed=None, l1_coef=None, k=None):
+    """Construct a model by name: "top1", "topk" (needs k) or "l1" (needs l1_coef)."""
     if kind == "top1":
         return Top1SAE(d, m, seed=seed)
+    if kind == "topk":
+        if k is None:
+            raise ValueError("the topk model needs k")
+        return TopKSAE(d, m, k, seed=seed)
     if kind == "l1":
         if l1_coef is None:
             raise ValueError("the l1 model needs l1_coef")

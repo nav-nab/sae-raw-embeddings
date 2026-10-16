@@ -47,9 +47,10 @@ def clear_run(run_dir):
             path.unlink()
 
 
-def time_training(E, batch_size, model="top1", l1_coef=None, n_steps=3, device="cpu"):
+def time_training(E, batch_size, model="top1", l1_coef=None, k=None, n_steps=3, device="cpu"):
     """Seconds per training step and per full evaluation, on a throwaway model."""
-    tr = Trainer(E, lr=default_lr(len(E)), seed=0, model=model, l1_coef=l1_coef, device=device)
+    tr = Trainer(E, lr=default_lr(len(E)), seed=0, model=model, l1_coef=l1_coef, k=k,
+                 device=device)
     tr.train_step(batch_size)  # warm-up
     t0 = time.time()
     for _ in range(n_steps):
@@ -86,7 +87,7 @@ def token_weights(V, counts=None):
 
 
 def load_model_file(path, cfg, d, m):
-    model = build_model(cfg["model"], d, m, l1_coef=cfg.get("l1_coef"))
+    model = build_model(cfg["model"], d, m, l1_coef=cfg.get("l1_coef"), k=cfg.get("k"))
     model.load_state_dict(torch.load(path, map_location="cpu"))
     return model
 

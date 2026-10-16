@@ -91,10 +91,11 @@ def train_step(model, optimizer, x):
 class Trainer:
     """Model, optimiser, sampler and evaluation history of one training run."""
 
-    def __init__(self, E, lr, seed, model="top1", l1_coef=None, counts=None, device="cpu"):
+    def __init__(self, E, lr, seed, model="top1", l1_coef=None, k=None, counts=None,
+                 device="cpu"):
         self.E = torch.as_tensor(E, dtype=torch.float32, device=device)
         V, d = self.E.shape
-        self.model = build_model(model, d, V, seed=seed, l1_coef=l1_coef).to(device)
+        self.model = build_model(model, d, V, seed=seed, l1_coef=l1_coef, k=k).to(device)
         self.init_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         self.sampler = UniformSampler(V, seed) if counts is None else FrequencySampler(counts, seed)
@@ -192,12 +193,13 @@ class _StopOnInterrupt:
         return False
 
 
-def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None,
+def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None, k=None,
           counts=None, device="cpu", run_dir=None, checkpoint_every=600,
           heartbeat_every=60, extra_eta_seconds=0.0, log=print):
     """Train an SAE with m = V on the rows of E.
 
-    model is "top1" (Experiment 1) or "l1" (Experiment 2, needs l1_coef).
+    model is "top1" (Experiment 1), "l1" (Experiment 2, needs l1_coef) or
+    "topk" (needs k; Experiment 3 anneals k).
     Evaluations happen at step 0, every eval_every steps and at the last step.
     If counts (length V) is given, tokens are sampled in proportion to counts
     and evaluation is weighted the same way.
@@ -211,7 +213,7 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     Returns (model, history, finished). finished is False if the run was
     interrupted; call train() again with the same run_dir to continue.
     """
-    tr = Trainer(E, lr, seed, model=model, l1_coef=l1_coef, counts=counts, device=device)
+    tr = Trainer(E, lr, seed, model=model, l1_coef=l1_coef, k=k, counts=counts, device=device)
     if run_dir is not None:
         run_dir = Path(run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)

@@ -214,3 +214,14 @@ def test_frequency_weighted_training_runs_and_never_samples_zero_count_tokens():
 def test_default_lr_follows_scaling_rule():
     assert np.isclose(default_lr(2 ** 14), 2e-4)
     assert np.isclose(default_lr(50_257), 1.14e-4, rtol=0.01)
+
+
+def test_topk_training_reduces_loss_and_resumes(tmp_path):
+    E = _tiny_problem()
+    kw = dict(batch_size=32, lr=1e-2, seed=0, eval_every=10, model="topk", k=4,
+              log=lambda *_: None)
+    ref, hist, _ = train(E, steps=30, **kw)
+    assert hist[-1]["rel_loss"] < hist[0]["rel_loss"] and hist[-1]["mean_l0"] <= 4
+    train(E, steps=15, run_dir=tmp_path, **kw)
+    res, _, _ = train(E, steps=30, run_dir=tmp_path, **kw)
+    assert torch.equal(ref.W_dec, res.W_dec)

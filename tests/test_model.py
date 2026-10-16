@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from sae_raw.model import ReLUSAE, Top1SAE, build_model
+from sae_raw.model import ReLUSAE, Top1SAE, TopKSAE, build_model
 
 
 def naive_forward(model, x):
@@ -155,3 +155,60 @@ def test_activity_counts():
 def test_build_model_needs_l1_coef_for_l1():
     with pytest.raises(ValueError):
         build_model("l1", 8, 20)
+
+
+# ----------------------------------------------------------------------------
+# TopK with k > 1
+# ----------------------------------------------------------------------------
+
+def naive_topk_forward(model, x):
+    """Reference: TopK(ReLU(a)) with a dense code, using plain autograd."""
+    a = x @ model.W_enc.T + model.b_enc
+    idx = a.detach().topk(model.k, dim=1).indices
+    mask = torch.zeros_like(a).scatter(1, idx, 1.0)
+    return (torch.relu(a) * mask) @ model.W_dec
+
+
+@pytest.mark.parametrize("k", [1, 3, 7])
+def test_topk_matches_naive_forward_and_gradients(k):
+    torch.manual_seed(k)
+    model = TopKSAE(d=12, m=30, k=k, seed=k)
+    with torch.no_grad():
+        model.b_enc.normal_(0, 0.3)  # some selected features have negative scores
+    x = torch.randn(25, 12)
+    x_hat, _, _ = model(x)
+    ((x - x_hat) ** 2).sum(dim=1).mean().backward()
+    fast = [p.grad.clone() for p in (model.W_enc, model.W_dec, model.b_enc)]
+    for p in model.parameters():
+        p.grad = None
+    ref_hat = naive_topk_forward(model, x)
+    ((x - ref_hat) ** 2).sum(dim=1).mean().backward()
+    assert torch.allclose(x_hat, ref_hat, atol=1e-5)
+    for g_fast, p in zip(fast, (model.W_enc, model.W_dec, model.b_enc)):
+        assert torch.allclose(g_fast, p.grad, atol=1e-5)
+
+
+def test_topk_with_k1_equals_top1():
+    torch.manual_seed(0)
+    x = torch.randn(20, 8)
+    a, b = Top1SAE(8, 30, seed=0), TopKSAE(8, 30, k=1, seed=0)
+    assert torch.allclose(a(x)[0], b(x)[0])
+
+
+def test_topk_activity_counts_active_selected_features():
+    torch.manual_seed(0)
+    model = TopKSAE(8, 40, k=5, seed=0)
+    with torch.no_grad():
+        model.b_enc.normal_(0, 0.5)
+    x = torch.randn(10, 8)
+    _, l0, active = model.activity(x)
+    _, idx, coef = model(x)
+    assert torch.equal(l0, (coef > 0).sum(dim=1))
+    assert l0.max() <= 5
+    assert set(active.nonzero().flatten().tolist()) == set(idx[coef > 0].tolist())
+
+
+def test_build_model_needs_k_for_topk():
+    with pytest.raises(ValueError):
+        build_model("topk", 8, 20)
+    assert build_model("topk", 8, 20, k=4).k == 4
