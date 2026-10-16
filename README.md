@@ -8,7 +8,7 @@ The setting is chosen so that an exact answer exists. We train on the rows of GP
 
 Each experiment has a plan in `docs/` and its code in its own folder under `experiments/`.
 
-- **Experiment 1** (plan `docs/experiment_1_top1.md`, code `experiments/exp1_top1/`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measures what percentage of the features dead at initialisation revive during training.
+- **Experiment 1** (plan `docs/experiment_1_top1.md`, code `experiments/exp1_top1/`, results `docs/experiment_1_results.md`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measures what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
 - **Experiment 2** (plan `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, not written yet): an L1-penalised ReLU SAE with the same data, dictionary and initialisation. It runs if fewer than 80% of the dead features revive in Experiment 1. Success is measured by decoder recovery, since the loss cannot reach zero.
 
 Shared choices:
@@ -34,6 +34,7 @@ scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
 docs/
   experiment_1_top1.md      plan: how many dead Top1 features revive?
+  experiment_1_results.md   results and interpretation of Experiment 1
   experiment_2_l1_relu.md   plan: L1-penalised ReLU SAE (runs if revival is below 80%)
   planning/                 original planning documents, kept unchanged as a record
 tests/                pytest suite
@@ -114,6 +115,6 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Resumable training loop with revival tracking, checkpoints and heartbeat
 - [x] Final analysis: revival and decoder recovery
 - [x] Experiment 1 script (budget: about 10 hours on the laptop)
-- [ ] Experiment 1 full run
-- [ ] Experiment 2 design questions ($\lambda$, learning rate, recovery threshold), to be settled after Experiment 1
+- [x] Experiment 1 full run (results in `docs/experiment_1_results.md`)
+- [ ] Experiment 2 design questions ($\lambda$, learning rate, recovery threshold)
 - [ ] Experiment 2 script
