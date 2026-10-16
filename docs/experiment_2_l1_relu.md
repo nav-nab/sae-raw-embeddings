@@ -32,6 +32,23 @@ Different from Experiment 1:
 - **Logged at each evaluation:** loss, relative loss, the mean number of active features per token, the number of alive features, and revival of features dead at initialisation. A feature is alive if it is active on at least one token.
 - **Recovery:** the number of embeddings that have a decoder row at high cosine, and how many of those matches are one-to-one. A full assignment over a $50{,}257 \times 50{,}257$ matrix is too large, so we use nearest-neighbour matches in both directions.
 
+## Choosing λ: subset sweep
+
+These runs used the 2,000 most frequent tokens with $m = 2{,}000$, 4,000 steps at batch size 1024, the Gao et al. learning rate and seed 0. A token is recovered if it has a mutual-nearest decoder row above the given cosine.
+
+| $\lambda$ | Alive at end (of 2,000) | Active features per token | Relative loss | Recovered at cosine > 0.9 | Recovered at cosine > 0.99 |
+|---|---|---|---|---|---|
+| 0.03 | 2,000 | 79.5 | 0.005 | 3 | 0 |
+| 0.1 | 2,000 | 5.0 | 0.007 | 1,055 | 622 |
+| 0.3 | 1,894 | 1.7 | 0.010 | 1,710 | 1,516 |
+| 1 | 895 | 1.7 | 0.217 | 707 | 425 |
+
+$\lambda = 3$ and 10 were planned but not run. At $\lambda = 1$ more than half the features had already died within the first 500 steps, and larger values would only kill more.
+
+$\lambda = 0.3$ did best. It recovered 1,710 tokens at cosine above 0.9 and 1,516 above 0.99, with about 95% of features alive and a relative loss of 0.010. That is more than the best $k$-annealing schedule on the same subset (1,362 and 1,068).
+
+Two trends set the window for $\lambda$. Below 0.3, codes stay dense for longer: at $\lambda = 0.1$ active features per token were still falling at the end (from 8 to 5 over the last 500 steps), and recovery was still rising. Above 0.3, features die early: at $\lambda = 1$, alive features fell from 2,000 to about 1,040 by step 500. Token norms are the same on the subset and the full table (about 4 on average), so the scale of $\lambda$ should carry over.
+
 ## How to run
 
 A single script, `experiments/exp2_l1_relu/run.py`, will run this experiment through the same shared runner as Experiments 1 and 3. It will be written once the design questions below are settled.
