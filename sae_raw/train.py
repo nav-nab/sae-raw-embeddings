@@ -9,6 +9,9 @@ if token counts are passed to train(), tokens are drawn with probability
 proportional to their count, and evaluation is weighted the same way. Tokens
 with zero count are then never sampled.
 
+For the TopK model, k can follow a schedule (k_schedule), lowering it from
+k0 to 1 during training (Experiment 3).
+
 At every evaluation the loop also reports revival: how many of the features
 that were dead at initialisation (active on no token) have since received
 gradient, judged by whether their parameters have changed.

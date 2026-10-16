@@ -5,8 +5,8 @@ Weights p are the token probabilities used in training: uniform (1/V each) by
 default, or Wikipedia counts normalised to sum 1 when frequency weighting is on.
 
 A feature is alive if it is active on at least one token with positive weight.
-For Top1 this means it wins the token with a positive coefficient. For the
-ReLU model it means its activation is positive. A feature that is not alive
+For Top1 and TopK this means it is selected for the token with a positive
+coefficient. For the ReLU model it means its activation is positive. A feature that is not alive
 receives no gradient.
 """
 

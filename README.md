@@ -71,7 +71,7 @@ caffeinate -i python experiments/exp2_l1_relu/run.py
 caffeinate -i python experiments/exp3_k_annealing/run.py
 ```
 
-`caffeinate -i` keeps the Mac awake. Each script does every step:
+Run the scripts from the repository root, since `data/` and `runs/` are relative paths. Run one experiment at a time: each one sizes itself to the whole machine, so two at once would each take about twice as long. `caffeinate -i` keeps the Mac awake. Each script does every step:
 
 1. It prepares the data if `data/` does not exist yet.
 2. It times a few training steps on this machine and chooses the number of steps that fits in `--hours` (default 10, including evaluations and the final analysis). `--steps` overrides this. For Experiment 3 it times each value of $k$ in the schedule, since steps at large $k$ are slower.
