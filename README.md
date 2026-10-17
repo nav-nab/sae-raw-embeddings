@@ -84,12 +84,13 @@ Run the scripts from the repository root, since `data/` and `runs/` are relative
 
 **Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, active features per token, alive count and revival. Each evaluation is also logged in full.
 
-**Run directory** (`--run-dir`, default `runs/exp1`, `runs/exp2` or `runs/exp3`, about 1.5 GB):
+**Run directory** (`--run-dir`, default `runs/exp1`, `runs/exp2` or `runs/exp3`, about 4.5 GB with snapshots):
 
 - `config.json`: the settings, including the measured step and evaluation times;
 - `init.pt`: the parameters at initialisation, saved before the first step;
 - `checkpoint.pt`: everything needed to resume (about three times the model size);
 - `model.pt`: the parameters at the latest evaluation;
+- `snapshots/model_step<N>.pt`: the parameters kept at 10 evaluations spread evenly over the run, about 310 MB each at full scale. An extension keeps 10 more, spread over its new steps. `--n-snapshots` changes the number, and `config.json` lists the steps;
 - `eval_log.csv`: one row per evaluation;
 - `analysis.json`: the final report;
 - `run.log`: the full log, appended to on every invocation.

@@ -18,6 +18,17 @@ def test_plan_steps_fits_the_budget():
     assert (steps + every) * 2.62 + 24 * 23 > 10 * 3600  # one more block would not fit
 
 
+def test_pick_snapshot_steps():
+    from sae_raw.run import pick_snapshot_steps
+    # The Experiment 2 extension: 29 evaluations of 925 steps after step 18,500.
+    snaps = pick_snapshot_steps(18500, 45325, 925, 10)
+    assert len(snaps) == 10 and snaps[-1] == 45325
+    assert all(s % 925 == 0 and s > 18500 for s in snaps)
+    gaps = {b - a for a, b in zip(snaps, snaps[1:])}
+    assert gaps <= {2 * 925, 3 * 925}  # evenly spread
+    assert pick_snapshot_steps(0, 40, 10, 10) == [10, 20, 30, 40]  # fewer evaluations than n
+
+
 def _fake_data(path):
     rng = np.random.default_rng(0)
     E = (rng.normal(size=(60, 16)) * (1 + rng.random((60, 1)))).astype(np.float32)
@@ -43,6 +54,8 @@ def test_experiment_1_script_end_to_end_and_resume(tmp_path):
     assert 0 <= result["n_revived"] <= result["n_dead_at_init"]
     log = (run / "run.log").read_text()
     assert "ETA" in log and "Result:" in log
+    assert sorted(p.name for p in (run / "snapshots").iterdir()) == \
+        ["model_step20.pt", "model_step40.pt"]
 
     # A second invocation resumes from the saved settings (here: already finished).
     r = _run_exp1(*common, "--steps", "999")
@@ -115,11 +128,14 @@ def test_extending_a_finished_run_continues_from_its_checkpoint(tmp_path):
               "--batch-size", "16", "--n-evals", "2"]
     run = lambda *a: subprocess.run([sys.executable, script, *common, *a], capture_output=True,
                                     text=True, cwd=REPO, timeout=300)
-    assert run("--steps", "20").returncode == 0
-    r = run("--extend-steps", "15")  # rounded up to two intervals of 10
+    assert run("--steps", "20", "--n-snapshots", "1").returncode == 0
+    r = run("--extend-steps", "15", "--n-snapshots", "1")  # rounded up to two intervals of 10
     assert r.returncode == 0, r.stderr
     cfg = json.loads((tmp_path / "run" / "config.json").read_text())
     assert cfg["steps"] == 40 and cfg["extensions"][0]["from_step"] == 20
+    assert cfg["snapshot_steps"] == [20, 40]
+    assert sorted(p.name for p in (tmp_path / "run" / "snapshots").iterdir()) == \
+        ["model_step20.pt", "model_step40.pt"]
     assert (tmp_path / "run" / "analysis_step20.json").exists()
     steps = [int(line.split(",")[0]) for line in
              (tmp_path / "run" / "eval_log.csv").read_text().splitlines()[1:]]

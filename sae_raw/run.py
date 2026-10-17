@@ -18,6 +18,7 @@ import argparse
 import json
 import logging
 import platform
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -27,7 +28,7 @@ import torch
 from sae_raw import data
 from sae_raw.evaluation import analyse
 from sae_raw.model import build_model
-from sae_raw.train import (CHECKPOINT_FILE, EVAL_LOG_FILE, INIT_FILE, MODEL_FILE,
+from sae_raw.train import (CHECKPOINT_FILE, EVAL_LOG_FILE, INIT_FILE, MODEL_FILE, SNAPSHOT_DIR,
                            FrequencySampler, Trainer, UniformSampler, default_lr, fmt_duration,
                            k_schedule, train)
 
@@ -59,6 +60,7 @@ def clear_run(run_dir):
         path = Path(run_dir) / name
         if path.exists():
             path.unlink()
+    shutil.rmtree(Path(run_dir) / SNAPSHOT_DIR, ignore_errors=True)
 
 
 def time_training(E, batch_size, model="top1", l1_coef=None, k=None, n_steps=3, device="cpu",
@@ -91,6 +93,18 @@ def plan_steps(hours, step_s, eval_s, n_evals, extra_evals=0):
     budget = hours * 3600 - (n_evals + 1 + extra_evals) * eval_s
     eval_every = max(int(budget / step_s) // n_evals, 1)
     return eval_every * n_evals, eval_every
+
+
+def pick_snapshot_steps(start, steps, eval_every, n):
+    """n evaluation steps in (start, steps], evenly spread and including the last.
+
+    Evaluations fall on multiples of eval_every and at the last step. If
+    there are n or fewer of them, all are returned.
+    """
+    evals = [s for s in range(start + 1, steps + 1) if s % eval_every == 0 or s == steps]
+    if n >= len(evals):
+        return evals
+    return [evals[round((j + 1) * len(evals) / n) - 1] for j in range(n)]
 
 
 def mean_step_seconds(step_seconds_by_k, schedule, n=1000):
@@ -150,6 +164,9 @@ def _parser(description, default_run_dir, schedule, l1_coef, batch_size):
     p.add_argument("--frequency-weighted", action="store_true",
                    help="sample tokens by Wikipedia frequency and weight evaluation the same "
                         "way (off in the experiment design)")
+    p.add_argument("--n-snapshots", type=int, default=10,
+                   help="evaluations at which the parameters are kept in snapshots/, spread "
+                        "evenly over the run (or over the new steps of an extension)")
     p.add_argument("--checkpoint-minutes", type=float, default=10.0)
     p.add_argument("--heartbeat-seconds", type=float, default=60.0)
     p.add_argument("--device", default="cpu")
@@ -213,7 +230,8 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
         l1_coef=cfg.get("l1_coef"), schedule=sched,
         counts=train_counts, device=cfg["device"], run_dir=run_dir,
         checkpoint_every=60 * cfg["checkpoint_minutes"], heartbeat_every=cfg["heartbeat_seconds"],
-        extra_eta_seconds=ANALYSIS_EVALS * cfg["eval_seconds"], step_seconds_by_k=by_k, log=log)
+        extra_eta_seconds=ANALYSIS_EVALS * cfg["eval_seconds"], step_seconds_by_k=by_k,
+        snapshot_steps=set(cfg.get("snapshot_steps", [])), log=log)
     if not finished:
         return None
 
@@ -257,11 +275,14 @@ def _extend(run_dir, cfg, args, log):
     cfg["steps"] = old + extra
     cfg.setdefault("extensions", []).append(
         {"from_step": old, "to_step": cfg["steps"], "when": time.strftime("%Y-%m-%d %H:%M")})
+    new_snaps = pick_snapshot_steps(old, cfg["steps"], every, args.n_snapshots)
+    cfg["snapshot_steps"] = cfg.get("snapshot_steps", []) + new_snaps
     save_config(run_dir, cfg)
     log(f"Extending the run from {old:,} to {cfg['steps']:,} steps "
         f"({extra // every} more evaluations, about "
         f"{fmt_duration(extra * cfg['step_seconds'] + extra // every * cfg['eval_seconds'])} "
         f"at the measured speed).")
+    log(f"Snapshots will be kept at steps {', '.join(f'{s:,}' for s in new_snaps)}.")
 
 
 def _new_config(name, model, schedule, args, E, log):
@@ -303,7 +324,11 @@ def _new_config(name, model, schedule, args, E, log):
             args.hours, step_s, eval_s, args.n_evals, extra_evals=ANALYSIS_EVALS)
     else:
         cfg["steps"], cfg["eval_every"] = args.steps, max(args.steps // args.n_evals, 1)
+    cfg["snapshot_steps"] = pick_snapshot_steps(0, cfg["steps"], cfg["eval_every"],
+                                                args.n_snapshots)
     expected = cfg["steps"] * step_s + (args.n_evals + 1 + ANALYSIS_EVALS) * eval_s
     log(f"  {cfg['steps']:,} steps, evaluation every {cfg['eval_every']:,}, "
         f"expected {fmt_duration(expected)}.")
+    log(f"  Snapshots will be kept at steps "
+        f"{', '.join(f'{s:,}' for s in cfg['snapshot_steps'])}.")
     return cfg

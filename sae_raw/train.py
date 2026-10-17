@@ -41,6 +41,7 @@ INIT_FILE = "init.pt"              # parameters at initialisation
 CHECKPOINT_FILE = "checkpoint.pt"  # everything needed to resume
 MODEL_FILE = "model.pt"            # model parameters at the latest evaluation
 EVAL_LOG_FILE = "eval_log.csv"     # one row per evaluation
+SNAPSHOT_DIR = "snapshots"         # snapshots/model_step<N>.pt: parameters kept at chosen steps
 
 
 def default_lr(m):
@@ -218,7 +219,7 @@ class _StopOnInterrupt:
 def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None, k=None,
           counts=None, device="cpu", run_dir=None, checkpoint_every=600,
           heartbeat_every=60, extra_eta_seconds=0.0, schedule=None, step_seconds_by_k=None,
-          log=print):
+          snapshot_steps=(), log=print):
     """Train an SAE with m = V on the rows of E.
 
     model is "top1" (Experiment 1), "l1" (Experiment 2, needs l1_coef) or
@@ -231,7 +232,9 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     model.pt (at every evaluation) and checkpoint.pt (every checkpoint_every
     seconds, on interrupt and at the end), and resumes from checkpoint.pt if it
     exists. heartbeat_every sets the interval of the progress line, whose ETA
-    includes extra_eta_seconds for work after training.
+    includes extra_eta_seconds for work after training. model.pt is
+    overwritten at each evaluation. At evaluations whose step is in
+    snapshot_steps, the parameters are also kept in snapshots/model_step<N>.pt.
 
     schedule, for the "topk" model only, is a dict with keys k0, end_frac and
     shape (see k_schedule). k then follows the schedule, and k is ignored.
@@ -264,6 +267,11 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
         if run_dir is not None:
             _write_eval_log(tr.history, run_dir / EVAL_LOG_FILE)
             _atomic_save(tr.model.state_dict(), run_dir / MODEL_FILE)
+            if record["step"] in snapshot_steps:
+                path = run_dir / SNAPSHOT_DIR / f"model_step{record['step']}.pt"
+                path.parent.mkdir(exist_ok=True)
+                _atomic_save(tr.model.state_dict(), path)
+                log(f"Snapshot saved: {path.name}")
 
     def save_checkpoint(reason):
         if run_dir is not None:

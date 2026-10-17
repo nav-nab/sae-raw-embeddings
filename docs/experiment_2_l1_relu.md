@@ -80,7 +80,9 @@ At the end, 50,240 of 50,257 features were alive. 1,292 tokens were recovered at
 
 The run had not converged. Active features per token were still falling by about 20% per evaluation when it stopped, and on the subset the same $\lambda$ reached 1.7. A token spread over 24 features cannot line up with a single one, so recovery stays low until codes are much sparser. The first third of the run was spent near 300 active features per token, before sparsification got going.
 
-We are therefore continuing the same run from its checkpoint for about 12,000 more steps. This separates two readings: sparsification that is too slow for the time budget, and an L1 penalty that is too light to give one-hot codes at all.
+We are therefore continuing the same run from its checkpoint to step 45,325, with `--extend-steps 26500`. That is 29 more evaluations and about 15 hours. This separates two readings: sparsification that is too slow for the time budget, and an L1 penalty that is too light to give one-hot codes at all.
+
+The best point may come before the end of the extension, with codes nearly one-hot but few features dead. The extension therefore keeps the parameters at 10 evaluations, spread evenly, in `runs/exp2/snapshots/`. They fall at steps 21,275, 24,050, 26,825, 29,600, 31,450, 34,225, 37,000, 39,775, 42,550 and 45,325. The weights at step 18,500 were copied there by hand before the extension.
 
 ## Decisions
 
