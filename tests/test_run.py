@@ -106,3 +106,31 @@ def test_experiment_2_script_end_to_end(tmp_path):
     assert cfg["model"] == "l1" and cfg["l1_coef"] == 0.3 and cfg["batch_size"] == 1024
     result = json.loads((tmp_path / "run" / "analysis.json").read_text())
     assert "n_recovered_cos0.9" in result and "Result:" in (tmp_path / "run" / "run.log").read_text()
+
+
+def test_extending_a_finished_run_continues_from_its_checkpoint(tmp_path):
+    _fake_data(tmp_path / "data")
+    script = str(REPO / "experiments" / "exp2_l1_relu" / "run.py")
+    common = ["--data-dir", str(tmp_path / "data"), "--run-dir", str(tmp_path / "run"),
+              "--batch-size", "16", "--n-evals", "2"]
+    run = lambda *a: subprocess.run([sys.executable, script, *common, *a], capture_output=True,
+                                    text=True, cwd=REPO, timeout=300)
+    assert run("--steps", "20").returncode == 0
+    r = run("--extend-steps", "15")  # rounded up to two intervals of 10
+    assert r.returncode == 0, r.stderr
+    cfg = json.loads((tmp_path / "run" / "config.json").read_text())
+    assert cfg["steps"] == 40 and cfg["extensions"][0]["from_step"] == 20
+    assert (tmp_path / "run" / "analysis_step20.json").exists()
+    steps = [int(line.split(",")[0]) for line in
+             (tmp_path / "run" / "eval_log.csv").read_text().splitlines()[1:]]
+    assert steps == [0, 10, 20, 30, 40]
+    assert "Resuming from" in r.stdout and "Result:" in r.stdout
+
+
+def test_extending_a_scheduled_run_is_refused(tmp_path):
+    _fake_data(tmp_path / "data")
+    common = ["--data-dir", str(tmp_path / "data"), "--run-dir", str(tmp_path / "run"),
+              "--batch-size", "16", "--n-evals", "2", "--k0", "2"]
+    assert _run_exp3(*common, "--steps", "10").returncode == 0
+    r = _run_exp3(*common, "--extend-steps", "10")
+    assert r.returncode != 0 and "not supported" in r.stderr

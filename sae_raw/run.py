@@ -153,6 +153,11 @@ def _parser(description, default_run_dir, schedule, l1_coef, batch_size):
     p.add_argument("--checkpoint-minutes", type=float, default=10.0)
     p.add_argument("--heartbeat-seconds", type=float, default=60.0)
     p.add_argument("--device", default="cpu")
+    p.add_argument("--extend-steps", type=int, default=None,
+                   help="continue an existing run for this many more steps (rounded up to a "
+                        "whole number of evaluation intervals)")
+    p.add_argument("--extend-hours", type=float, default=None,
+                   help="continue an existing run for about this many more hours")
     p.add_argument("--fresh", action="store_true",
                    help="discard any earlier run in --run-dir and start again")
     return p
@@ -188,6 +193,8 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
         log("Found an earlier run: resuming with its saved settings "
             "(command-line training options are ignored; use --fresh to start again).")
         E, counts = data.load_prepared(data_dir, cfg["subset"])
+        if args.extend_steps is not None or args.extend_hours is not None:
+            _extend(run_dir, cfg, args, log)
     else:
         E, counts = data.load_prepared(data_dir, args.subset)
         cfg = _new_config(name, model, schedule, args, E, log)
@@ -223,6 +230,38 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
         log(f"  {key:>22}: {value:.4g}" if isinstance(value, float) else f"  {key:>22}: {value}")
     report(result, log)
     return result
+
+
+def _extend(run_dir, cfg, args, log):
+    """Raise the step count of an existing run so that training continues from its checkpoint.
+
+    The new steps are a whole number of evaluation intervals. The earlier
+    analysis, if any, is kept as analysis_step<N>.json.
+    """
+    if cfg.get("schedule"):
+        raise SystemExit("--extend-* is not supported for runs with a k schedule: the schedule "
+                         "depends on the total number of steps.")
+    if args.extend_steps is not None and args.extend_hours is not None:
+        raise SystemExit("give --extend-steps or --extend-hours, not both")
+    every = cfg["eval_every"]
+    if args.extend_steps is not None:
+        extra = args.extend_steps
+    else:
+        per_interval = every * cfg["step_seconds"] + cfg["eval_seconds"]
+        extra = int(args.extend_hours * 3600 / per_interval) * every
+    extra = max(-(-extra // every) * every, every)
+    old = cfg["steps"]
+    analysis = run_dir / ANALYSIS_FILE
+    if analysis.exists():
+        analysis.replace(run_dir / f"analysis_step{old}.json")
+    cfg["steps"] = old + extra
+    cfg.setdefault("extensions", []).append(
+        {"from_step": old, "to_step": cfg["steps"], "when": time.strftime("%Y-%m-%d %H:%M")})
+    save_config(run_dir, cfg)
+    log(f"Extending the run from {old:,} to {cfg['steps']:,} steps "
+        f"({extra // every} more evaluations, about "
+        f"{fmt_duration(extra * cfg['step_seconds'] + extra // every * cfg['eval_seconds'])} "
+        f"at the measured speed).")
 
 
 def _new_config(name, model, schedule, args, E, log):

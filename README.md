@@ -80,7 +80,7 @@ Run the scripts from the repository root, since `data/` and `runs/` are relative
 
 `--help` lists all options. Experiment 2 also takes `--l1-coef`, and Experiment 3 takes `--k0`, `--end-frac` and `--shape` to change the schedule.
 
-**Interrupting and resuming.** A checkpoint is saved every 10 minutes. On Ctrl-C the script finishes the current step, saves a checkpoint and stops. A second Ctrl-C aborts without saving. Running the same command again resumes from the checkpoint with the settings saved in the run directory, and gives the same result as an uninterrupted run. `--fresh` discards the earlier run and starts again.
+**Interrupting and resuming.** A checkpoint is saved every 10 minutes. On Ctrl-C the script finishes the current step, saves a checkpoint and stops. A second Ctrl-C aborts without saving. Running the same command again resumes from the checkpoint with the settings saved in the run directory, and gives the same result as an uninterrupted run. `--fresh` discards the earlier run and starts again. `--extend-steps N` or `--extend-hours H` continues a run past its planned end, from its checkpoint; the earlier analysis is kept as `analysis_step<N>.json`. Runs with a $k$ schedule (Experiment 3) can't be extended, because the schedule depends on the total number of steps.
 
 **Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, active features per token, alive count and revival. Each evaluation is also logged in full.
 

@@ -1,6 +1,6 @@
 # Experiment 2: an L1-penalised ReLU SAE
 
-Status: ready to run, with $\lambda = 0.3$.
+Status: first full run done (2026-10-16 to 17), not converged; being extended.
 
 This experiment runs if fewer than 80% of the Top1 features that are dead at initialisation revive in Experiment 1. None revived (`docs/experiment_1_results.md`), so it goes ahead.
 
@@ -62,6 +62,25 @@ caffeinate -i python experiments/exp2_l1_relu/run.py
 The script works like the other experiment scripts. It prepares the data if needed and times this machine to fit the 10-hour budget. It then trains with a checkpoint every 10 minutes and a heartbeat every minute, and finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp2/`. `--l1-coef` changes $\lambda$.
 
 One thing to watch at full scale. At initialisation about half of all features are active on each token, about 25,000 of 50,257 against about 1,000 of 2,000 on the subset. The relative loss therefore starts near 1,000 rather than near 1, and the first part of training is spent switching most features off. On the subset this took a few hundred steps. At full scale the learning rate is five times smaller and there are 25 times more active features to silence, so it may take a good share of the run. The heartbeat's active-features-per-token figure shows how fast this is going.
+
+## First full run
+
+18,500 steps at batch size 1024, 10.1 hours on the laptop, `runs/exp2/`.
+
+| Step | Active features per token | Relative loss |
+|---|---|---|
+| 0 | 25,117 | 1,037 |
+| 925 | 628 | 0.57 |
+| 2,775 to 6,475 | about 300 (flat) | 0.41 to 0.26 |
+| 12,950 | 98 | 0.112 |
+| 16,650 | 37 | 0.077 |
+| 18,500 | 24 | 0.066 |
+
+At the end, 50,240 of 50,257 features were alive. 1,292 tokens were recovered at cosine above 0.9 and 48 above 0.99.
+
+The run had not converged. Active features per token were still falling by about 20% per evaluation when it stopped, and on the subset the same $\lambda$ reached 1.7. A token spread over 24 features cannot line up with a single one, so recovery stays low until codes are much sparser. The first third of the run was spent near 300 active features per token, before sparsification got going.
+
+We are therefore continuing the same run from its checkpoint for about 12,000 more steps. This separates two readings: sparsification that is too slow for the time budget, and an L1 penalty that is too light to give one-hot codes at all.
 
 ## Decisions
 
