@@ -12,7 +12,7 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 2** (plan `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, ready to run): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. It goes ahead because revival in Experiment 1 was below 80%. Success is measured by decoder recovery, since the loss cannot reach zero. On the subset, $\lambda = 0.3$ recovered the most tokens of any setup so far.
 - **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, ready to run): as Experiment 1, but with a TopK encoder whose $k$ starts at 32, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery. On the subset, the chosen schedule recovered six times as many tokens as Top1.
 
-`docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each.
+`docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
 
 Shared choices:
 
@@ -44,6 +44,7 @@ docs/
   experiment_2_l1_relu.md      plan: L1-penalised ReLU SAE
   experiment_3_k_annealing.md  plan: TopK with k lowered to 1 during training
   failure_modes.md             running table of failed attempts and why they failed
+  write_up_plan.md             framing of the write-up: one success mode, many failure modes
   planning/                    original planning documents, kept unchanged as a record
 tests/                pytest suite
 data/                 generated, not tracked by git
