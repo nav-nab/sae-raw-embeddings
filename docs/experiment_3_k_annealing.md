@@ -1,6 +1,6 @@
 # Experiment 3: TopK with k-annealing
 
-Status: ready to run with schedule N (chosen 2026-10-19 from the finer grid below), with a first budget of 10 hours that can be extended.
+Status: ready to run with schedule O (chosen 2026-10-19, see below), with a first budget of 10 hours that can be extended.
 
 ## Motivation
 
@@ -68,12 +68,28 @@ Same budget as the tests above: 4,000 steps at batch size 512, seed 0. Each sche
 | L | 2 for 80%, 1 for 20% | 557 | 545 | 295 | 136 |
 | M | As B, starting at $k_0 = 64$ | 1,884 | 1,482 | 1,454 | 1,184 |
 | N | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,860 | 1,532 | **1,501** | **1,267** |
+| O | 128, 64, 32, 16, 8, 4 at 6.7% each; 2 for 40%; 1 for 20% | 1,891 | 1,523 | 1,499 | 1,250 |
+| P | As B, starting at $k_0 = 128$ | 1,912 | 1,474 | 1,438 | 1,171 |
 
 The starting $k$ matters most. Recovery rises steadily with $k_0$: 851, 1,171, 1,362 and 1,454 for $k_0$ = 8, 16, 32 and 64 under schedule B. A larger $k_0$ keeps more features alive before the step to $k = 1$.
 
 The shape of the low end matters much less. A longer stage at $k = 2$, a stage at $k = 3$, or less time at $k = 1$ changes recovery by at most 40 tokens. With one seed, differences that small may be noise. In every run, the step from $k = 2$ to $k = 1$ still loses 15% to 20% of the alive features.
 
-The best schedule, N, combines $k_0 = 64$ with a long stage at $k = 2$. It recovers 1,501 tokens, against 1,362 for B and 1,710 for the L1 reference with $\lambda = 0.3$. The trend in $k_0$ has not levelled off at 64.
+The best schedule, N, combines $k_0 = 64$ with a long stage at $k = 2$. It recovers 1,501 tokens, against 1,362 for B and 1,710 for the L1 reference with $\lambda = 0.3$.
+
+Starting at $k_0 = 128$ (O and P) gives no further gain on the subset. At $k = 64$, 98% of the subset's features are already alive at initialisation, so a larger $k_0$ has little left to rescue.
+
+## Choosing $k_0$ at full scale
+
+The full table has a far larger share of features dead at initialisation than the subset at the same $k$.
+
+| $k$ | 32 | 64 | 128 | 256 |
+|---|---|---|---|---|
+| Alive at initialisation, subset (of 2,000) | 93% | 98% | 99.8% | |
+| Alive at initialisation, full table (of 50,257) | 76.7% | 86.5% | 93.3% | 97.3% |
+| Step time at batch size 4096, full table (sandbox) | 4.7 s | 6.8 s | 9.6 s | |
+
+On the subset, going from 93% to 98% alive at the start ($k_0$ = 32 to 64) raised recovery by about 90 tokens. At full scale, $k_0 = 128$ halves the features dead at the start, from 6,798 to 3,349, and brings the full table to where the subset starts at $k_0 = 32$. It costs about 10% of the steps in a 10-hour run. We therefore use schedule O, which matched N on the subset.
 
 ## Design
 
@@ -84,15 +100,16 @@ The same as Experiment 1, except for the encoder and the schedule:
 - **Loss:** plain MSE.
 - **Initialisation:** as in Experiment 1, with the same seed. The initial parameters are saved to `init.pt`.
 - **Training:** Adam with the Gao et al. learning rate, batch size 4096, one seed, a first budget of 10 hours on the laptop.
-- **Schedule (N):** $k$ = 64, 32, 16, 8 and 4 for 8% of training each, then $k = 2$ for 40% and $k = 1$ for the last 20%.
+- **Schedule (O):** $k$ = 128, 64, 32, 16, 8 and 4, sharing the first 40% of training equally, then $k = 2$ for 40% and $k = 1$ for the last 20%.
 - **Extension:** if the run needs longer, `--extend-steps` lengthens it. The part of the schedule not yet reached is stretched in proportion over the new length. An extension made during the $k = 2$ stage therefore lengthens that stage. An extension made after the run reaches $k = 1$ continues at $k = 1$, where dead features cannot revive.
-- **Measurement:** as in Experiment 1. The current $k$, alive features and active features per token are logged at every evaluation. Loss, alive features and decoder recovery are measured at the end, once $k = 1$. Features dead at initialisation are judged at $k_0 = 64$.
+- **Measurement:** as in Experiment 1. The current $k$, alive features and active features per token are logged at every evaluation. Loss, alive features and decoder recovery are measured at the end, once $k = 1$. Features dead at initialisation are judged at $k_0 = 128$.
 
 ## Decisions
 
 - Fixed-$k$ TopK dropped in favour of $k$-annealing, based on the measurements above.
 - First choice: schedule B (halving from $k_0 = 32$, reaching $k = 1$ at 80%), the best of the first three subset tests.
 - Replaced on 2026-10-19 by schedule N, the best of the finer grid. It starts at $k_0 = 64$ and spends 40% of training at $k = 2$.
+- Then replaced the same day by schedule O, which starts at $k_0 = 128$. It matched N on the subset and halves the features dead at initialisation at full scale.
 - Budget: 10 hours first, then extend if needed.
 
 ## How to run
@@ -101,9 +118,9 @@ The same as Experiment 1, except for the encoder and the schedule:
 caffeinate -i python experiments/exp3_k_annealing/run.py
 ```
 
-The script prepares the data if needed and times a few steps at each $k$ of the schedule, since steps at large $k$ are slower. It then chooses the number of steps that fits the 10-hour budget. Training runs with a checkpoint every 10 minutes and a heartbeat every minute that shows the current $k$. The script finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp3/`. `--stages` changes the schedule, for example `--stages 64:0.08,32:0.08,16:0.08,8:0.08,4:0.08,2:0.4,1:0.2` for schedule N. `--extend-steps N` lengthens the run, as described under Design. Run it once; to resume after an interrupt, use the plain command.
+The script prepares the data if needed and times a few steps at each $k$ of the schedule, since steps at large $k$ are slower. It then chooses the number of steps that fits the 10-hour budget. Training runs with a checkpoint every 10 minutes and a heartbeat every minute that shows the current $k$. The script finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp3/`. `--stages` changes the schedule, for example `--stages 64:0.08,32:0.08,16:0.08,8:0.08,4:0.08,2:0.4,1:0.2` for schedule N. Fractions are rescaled to sum to exactly 1. `--extend-steps N` lengthens the run, as described under Design. Run it once; to resume after an interrupt, use the plain command.
 
-**Expected cost.** In the sandbox at full scale and batch size 4096, a step took 6.8 s at $k = 64$, 4.7 s at $k = 32$, about 3.3 s at $k = 16$ down to $k = 2$, and 2.7 s at $k = 1$. The mean over schedule N is about 3.6 s. Peak memory at $k = 32$ was about 3.7 GB. The laptop ran Top1 steps about 20% faster than the sandbox, so it should fit roughly 12,000 steps into 10 hours. The script measures this itself before training.
+**Expected cost.** In the sandbox at full scale and batch size 4096, a step took 9.6 s at $k = 128$, 6.8 s at $k = 64$, 4.7 s at $k = 32$, about 3.3 s at $k = 16$ down to $k = 2$, and 2.7 s at $k = 1$. The mean over schedule O is about 3.9 s. Peak memory at $k = 32$ was about 3.7 GB. The laptop ran Top1 steps about 20% faster than the sandbox, so it should fit roughly 11,000 steps into 10 hours. The script measures this itself before training.
 
 ## Code
 

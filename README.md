@@ -10,7 +10,7 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 
 - **Experiment 1** (plan `docs/experiment_1_top1.md`, results `docs/experiment_1_results.md`, code `experiments/exp1_top1/`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measured what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
 - **Experiment 2** (plan and results `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, done): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. Result after 85,100 steps: 46,590 of 50,257 tokens recovered at cosine above 0.9 and 44,337 above 0.99, with 1.37 active features per token.
-- **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, ready to run): as Experiment 1, but with a TopK encoder whose $k$ starts at 64, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. The schedule (N) was chosen from a grid of subset tests. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery.
+- **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, ready to run): as Experiment 1, but with a TopK encoder whose $k$ starts at 128, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. The schedule (O) was chosen from a grid of subset tests and the share of features alive at initialisation at full scale. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery.
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
 
@@ -131,7 +131,7 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Resumable training loop with revival tracking, checkpoints, heartbeat and $k$ schedules
 - [x] Final analysis: revival and decoder recovery
 - [x] Experiment 1: script and full run (results in `docs/experiment_1_results.md`)
-- [x] Experiment 3: schedule N chosen from a subset grid (64, 32, 16, 8, 4 at 8% each, then 2 for 40% and 1 for 20%), and script written
+- [x] Experiment 3: schedule O chosen (128 down to 4 sharing the first 40%, then 2 for 40% and 1 for 20%), and script written
 - [ ] Experiment 3 full run
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
 - [x] Experiment 2 full run (85,100 steps)

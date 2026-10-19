@@ -6,9 +6,9 @@ One command runs everything:
 
 It prepares the data if needed, times this machine at each k of the schedule
 to fit --hours, and trains a TopK SAE with m = V on the GPT-2 embedding table
-(uniform token sampling). k follows schedule N: 64, 32, 16, 8 and 4 for 8% of
-training each, then 2 for 40% and 1 for the last 20%. --stages changes the
-schedule. The final model is a Top1 SAE, analysed for alive features, loss
+(uniform token sampling). k follows schedule O: 128, 64, 32, 16, 8 and 4,
+sharing the first 40% of training equally, then 2 for 40% and 1 for the last
+20%. --stages changes the schedule. The final model is a Top1 SAE, analysed for alive features, loss
 and decoder recovery.
 
 A checkpoint is saved every 10 minutes. Ctrl-C saves and stops; running the
@@ -21,9 +21,8 @@ console and to <run-dir>/run.log.
 
 from sae_raw.run import run_experiment
 
-SCHEDULE_N = {"shape": "stages",
-              "stages": [[64, 0.08], [32, 0.08], [16, 0.08], [8, 0.08], [4, 0.08],
-                         [2, 0.4], [1, 0.2]]}
+SCHEDULE_O = {"shape": "stages",
+              "stages": [[k, 0.4 / 6] for k in (128, 64, 32, 16, 8, 4)] + [[2, 0.4], [1, 0.2]]}
 EXPERIMENT_1_RECOVERED = 16  # tokens recovered at cosine > 0.9 by the Top1 run of Experiment 1
 
 
@@ -37,4 +36,4 @@ def report(result, log):
 
 if __name__ == "__main__":
     run_experiment("experiment_3_k_annealing", __doc__, "runs/exp3", model="topk",
-                   report=report, schedule=SCHEDULE_N)
+                   report=report, schedule=SCHEDULE_O)

@@ -38,11 +38,12 @@ Subset runs, 4,000 steps at batch size 512 unless marked. The fixed-$k$ runs use
 | Annealing, varying the low end | From 32; longer $k = 2$, a $k = 3$ stage, or less time at $k = 1$ | 1,408 to 1,441 | 1 | 1,363 to 1,402 |
 | Annealing, linear | Linear from 32 to 1 at 50% | 1,188 | 1 | 1,057 |
 | **Annealing N** | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,532 | 1 | **1,501** |
+| Annealing O | As N, starting at 128 | 1,523 | 1 | 1,499 |
 
 - **Top1 fails** because most features are dead at initialisation and never receive gradient. Experiment 1 is the full-scale version: none of the 39,914 dead features revived, and 16 tokens were recovered.
 - **Fixed $k > 1$ fails** in the opposite way. Features stay alive, but every token uses all $k$ of them, so no feature lines up with a token.
 - **$k$-annealing is a partial success.** A large starting $k$ keeps features alive, and recovery rises steadily with $k_0$. In every schedule, 15% to 20% of the alive features die at the final step from $k = 2$ to $k = 1$. The shape of the low end changes little. The best schedule, N, recovers 75% of the subset, against 86% for the reference.
-- **Full scale:** Experiment 3 runs schedule N on the whole vocabulary. Its result will close this section.
+- **Full scale:** Experiment 3 runs schedule O on the whole vocabulary. O matches N on the subset, and at full scale it halves the features dead at initialisation. Its result will close this section.
 
 ### 2b. ReLU SAEs with an L1 penalty
 

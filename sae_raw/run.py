@@ -123,9 +123,10 @@ def parse_stages(text):
     for part in text.split(","):
         k, frac = part.split(":")
         stages.append([int(k), float(frac)])
-    if abs(sum(f for _, f in stages) - 1) > 1e-6:
+    total = sum(f for _, f in stages)
+    if abs(total - 1) > 1e-3:
         raise argparse.ArgumentTypeError("the stage fractions must sum to 1")
-    return stages
+    return [[k, f / total] for k, f in stages]  # remove rounding in the given fractions
 
 
 def format_stages(stages):
