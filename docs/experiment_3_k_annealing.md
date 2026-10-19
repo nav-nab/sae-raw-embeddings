@@ -50,6 +50,31 @@ Annealing works on the subset. The best schedule, B, recovers 1,362 tokens at co
 
 The trajectories show where features are lost. About 1,775 features stay alive through the high-$k$ phase in every run. Most of the loss happens at the final step from $k = 2$ to $k = 1$, where B drops from 1,731 to 1,412 alive features. The linear schedule passes through the small values of $k$ fastest, and it does worst.
 
+## Finer schedule grid on the subset (2026-10-19)
+
+Same budget as the tests above: 4,000 steps at batch size 512, seed 0. Each schedule is given as the share of training spent at each $k$. "Alive before $k = 1$" is the alive count at the last evaluation before $k$ reaches 1.
+
+| Run | Schedule | Alive before $k = 1$ | Alive at end | Recovered at cosine > 0.9 | Recovered at cosine > 0.99 |
+|---|---|---|---|---|---|
+| B | Halving from 32, reaching 1 at 80% | 1,731 | 1,414 | 1,362 | 1,068 |
+| D | As B, reaching 1 at 95% | 1,731 | 1,408 | 1,363 | 1,065 |
+| G | 32, 16, 8, 4 at 10% each; 2 for 40%; 1 for 20% | 1,714 | 1,441 | 1,402 | 1,115 |
+| H | 32, 16, 8, 4 at 5% each; 2 for 60%; 1 for 20% | 1,654 | 1,440 | 1,393 | 1,119 |
+| I | As B, with a stage at $k = 3$ between 4 and 2 | 1,758 | 1,420 | 1,368 | 1,089 |
+| J | 32, 16, 8, 4 at 5% each; 2 for 75%; 1 for 5% | 1,654 | 1,433 | 1,387 | 1,101 |
+| E | As B, starting at $k_0 = 8$ | 1,101 | 1,025 | 851 | 530 |
+| F | As B, starting at $k_0 = 16$ | 1,457 | 1,265 | 1,171 | 849 |
+| K | 4 for 20%, 2 for 60%, 1 for 20% | 781 | 750 | 506 | 250 |
+| L | 2 for 80%, 1 for 20% | 557 | 545 | 295 | 136 |
+| M | As B, starting at $k_0 = 64$ | 1,884 | 1,482 | 1,454 | 1,184 |
+| N | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,860 | 1,532 | **1,501** | **1,267** |
+
+The starting $k$ matters most. Recovery rises steadily with $k_0$: 851, 1,171, 1,362 and 1,454 for $k_0$ = 8, 16, 32 and 64 under schedule B. A larger $k_0$ keeps more features alive before the step to $k = 1$.
+
+The shape of the low end matters much less. A longer stage at $k = 2$, a stage at $k = 3$, or less time at $k = 1$ changes recovery by at most 40 tokens. With one seed, differences that small may be noise. In every run, the step from $k = 2$ to $k = 1$ still loses 15% to 20% of the alive features.
+
+The best schedule, N, combines $k_0 = 64$ with a long stage at $k = 2$. It recovers 1,501 tokens, against 1,362 for B and 1,710 for the L1 reference with $\lambda = 0.3$. The trend in $k_0$ has not levelled off at 64.
+
 ## Design
 
 The same as Experiment 1, except for the encoder and the schedule:
