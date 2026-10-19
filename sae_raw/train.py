@@ -9,8 +9,10 @@ if token counts are passed to train(), tokens are drawn with probability
 proportional to their count, and evaluation is weighted the same way. Tokens
 with zero count are then never sampled.
 
-For the TopK model, k can follow a schedule (k_schedule), lowering it from
-k0 to 1 during training (Experiment 3).
+For the TopK model, k can follow a schedule (k_schedule), lowering it to 1
+during training (Experiment 3). A schedule is laid out over a run as a list
+of [k, last step] (k_stages), which stretch_stages can lengthen part-way
+through, so that a scheduled run can be extended.
 
 At every evaluation the loop also reports revival: how many of the features
 that were dead at initialisation (active on no token) have since received
@@ -81,13 +83,24 @@ class FrequencySampler:
         return torch.searchsorted(self.cdf, u, right=True)
 
 
-def k_schedule(step, steps, k0, end_frac, shape):
+def k_schedule(step, steps, k0=None, end_frac=None, shape="halving", stages=None):
     """Number of active features k at a training step (1-based), for k-annealing.
 
-    k starts at k0 and reaches 1 after a fraction end_frac of the steps, then
-    stays at 1. shape is "halving" (k0, k0/2, ..., 2 in equal stages, k0 a
-    power of 2) or "linear" (rounded to the nearest integer).
+    shape "stages": stages is a list of (k, fraction of training) pairs, in
+    order, with fractions summing to 1. k0 and end_frac are then ignored.
+
+    shape "halving" or "linear": k starts at k0 and reaches 1 after a fraction
+    end_frac of the steps, then stays at 1. "halving" passes through k0, k0/2,
+    ..., 2 in equal stages (k0 a power of 2); "linear" rounds to the nearest
+    integer.
     """
+    if shape == "stages":
+        t, acc = (step - 1) / steps, 0.0
+        for k, frac in stages:
+            acc += frac
+            if t < acc - 1e-12:
+                return k
+        return stages[-1][0]
     t = (step - 1) / steps / end_frac  # progress through the decrease, 0 to 1
     if t >= 1:
         return 1
@@ -97,6 +110,57 @@ def k_schedule(step, steps, k0, end_frac, shape):
         levels = [k0 >> i for i in range(int(math.log2(k0)))]  # k0, ..., 2
         return levels[int(t * len(levels))]
     raise ValueError(f"unknown schedule shape {shape!r}")
+
+
+def schedule_start_k(schedule):
+    """The k a schedule starts at."""
+    return schedule["stages"][0][0] if schedule.get("shape") == "stages" else schedule["k0"]
+
+
+def k_stages(schedule, steps):
+    """A schedule laid out over a run: a list of [k, last step], in order.
+
+    k is used from the step after the previous stage's last step up to and
+    including this stage's last step. The last stage ends at steps.
+    """
+    out = []
+    for s in range(1, steps + 1):
+        k = k_schedule(s, steps, **schedule)
+        if out and out[-1][0] == k:
+            out[-1][1] = s
+        else:
+            out.append([k, s])
+    return out
+
+
+def k_at(step, stages):
+    """k at a training step (1-based) under a list of [k, last step]. After the
+    last stage, its k continues."""
+    for k, last in stages:
+        if step <= last:
+            return k
+    return stages[-1][0]
+
+
+def stretch_stages(stages, done, steps):
+    """Lay out the rest of a schedule over a new total of steps.
+
+    Steps up to done keep their k. The part of the schedule after done is
+    stretched in proportion so that it ends at steps. If the schedule had
+    already finished by done, its last k simply continues to steps.
+    """
+    old = stages[-1][1]
+    if done >= old:
+        return [list(st) for st in stages[:-1]] + [[stages[-1][0], steps]]
+    scale = (steps - done) / (old - done)
+    out = []
+    for k, last in stages:
+        new_last = last if last <= done else done + round((last - done) * scale)
+        if out and new_last <= out[-1][1]:
+            continue  # a stage too short to survive rounding
+        out.append([k, new_last])
+    out[-1][1] = steps
+    return out
 
 
 def train_step(model, optimizer, x):
@@ -219,7 +283,7 @@ class _StopOnInterrupt:
 def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None, k=None,
           counts=None, device="cpu", run_dir=None, checkpoint_every=600,
           heartbeat_every=60, extra_eta_seconds=0.0, schedule=None, step_seconds_by_k=None,
-          snapshot_steps=(), log=print):
+          snapshot_steps=(), stages=None, log=print):
     """Train an SAE with m = V on the rows of E.
 
     model is "top1" (Experiment 1), "l1" (Experiment 2, needs l1_coef) or
@@ -236,8 +300,10 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     overwritten at each evaluation. At evaluations whose step is in
     snapshot_steps, the parameters are also kept in snapshots/model_step<N>.pt.
 
-    schedule, for the "topk" model only, is a dict with keys k0, end_frac and
-    shape (see k_schedule). k then follows the schedule, and k is ignored.
+    schedule, for the "topk" model only, is a dict of keyword arguments for
+    k_schedule. k then follows the schedule, and k is ignored. Alternatively,
+    stages gives the schedule already laid out over the run, as a list of
+    [k, last step] (see k_stages and stretch_stages); it takes precedence.
     step_seconds_by_k optionally maps each k in the schedule to a measured
     step time. The heartbeat then estimates the time left from these, scaled
     to the speed observed so far, since steps at large k are slower.
@@ -245,10 +311,13 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     Returns (model, history, finished). finished is False if the run was
     interrupted; call train() again with the same run_dir to continue.
     """
-    if schedule is not None:
+    if stages is None and schedule is not None:
+        stages = k_stages(schedule, steps)
+    scheduled = stages is not None
+    if scheduled:
         if model != "topk":
             raise ValueError("a k schedule needs the topk model")
-        k = schedule["k0"]
+        k = stages[0][0]
     tr = Trainer(E, lr, seed, model=model, l1_coef=l1_coef, k=k, counts=counts, device=device)
     if run_dir is not None:
         run_dir = Path(run_dir)
@@ -279,15 +348,14 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
             _atomic_save(tr.state_dict(), run_dir / CHECKPOINT_FILE)
             log(f"Checkpoint saved at step {tr.step:,} ({reason}, {time.time() - t0:.0f}s).")
 
-    if schedule is not None and tr.step > 0:  # resuming part-way through the schedule
-        tr.model.k = k_schedule(tr.step, steps, **schedule)
+    if scheduled and tr.step > 0:  # resuming part-way through the schedule
+        tr.model.k = k_at(tr.step, stages)
     if not tr.history:
         after_eval(tr.evaluate())
 
     # Timing for the heartbeat, measured in this session only.
     session_step0, step_time, eval_time = tr.step, 0.0, None
-    use_k_timing = schedule is not None and step_seconds_by_k is not None
-    k_at = (lambda s: k_schedule(s, steps, **schedule)) if schedule is not None else None
+    use_k_timing = scheduled and step_seconds_by_k is not None
     expected_done = 0.0  # sum of measured step times over the steps done this session
     remaining_evals = lambda: (sum(1 for s in range(tr.step + 1, steps + 1)
                                    if s % eval_every == 0 or s == steps))
@@ -300,14 +368,15 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
             return
         per_step = step_time / done
         if use_k_timing:
-            remaining = sum(step_seconds_by_k[k_at(s)] for s in range(tr.step + 1, steps + 1))
+            remaining = sum(step_seconds_by_k[k_at(s, stages)]
+                            for s in range(tr.step + 1, steps + 1))
             train_left = remaining * step_time / expected_done
         else:
             train_left = (steps - tr.step) * per_step
         eta = train_left + remaining_evals() * (eval_time or 0.0) + extra_eta_seconds
         finish = (datetime.now() + timedelta(seconds=eta)).strftime("%a %H:%M")
         last = tr.history[-1]
-        k_now = f"k={tr.model.k} | " if schedule is not None else ""
+        k_now = f"k={tr.model.k} | " if scheduled else ""
         log(f"step {tr.step:,}/{steps:,} ({100 * tr.step / steps:.1f}%) | {k_now}"
             f"{per_step:.2f} s/step | elapsed {fmt_duration(tr.seconds())} | "
             f"ETA {fmt_duration(eta)} (about {finish}) | minibatch loss {loss:.4g} | "
@@ -320,8 +389,8 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     with stop:
         while tr.step < steps and not stop.requested:
             t0 = time.time()
-            if schedule is not None:
-                tr.model.k = k_schedule(tr.step + 1, steps, **schedule)
+            if scheduled:
+                tr.model.k = k_at(tr.step + 1, stages)
             loss, mse = tr.train_step(batch_size)
             step_time += time.time() - t0
             if use_k_timing:

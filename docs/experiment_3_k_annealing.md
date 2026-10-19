@@ -1,6 +1,6 @@
 # Experiment 3: TopK with k-annealing
 
-Status: ready to run. Schedule chosen (schedule B below) and script written.
+Status: ready to run with schedule N (chosen 2026-10-19 from the finer grid below), with a first budget of 10 hours that can be extended.
 
 ## Motivation
 
@@ -83,16 +83,17 @@ The same as Experiment 1, except for the encoder and the schedule:
 - **Model:** a TopK SAE with $m = V$ features. The encoder selects the $k$ largest pre-activations and applies a ReLU to them, so a selected feature with a pre-activation at or below zero is inactive. Decoder rows have unit norm, and the decoder bias is zero.
 - **Loss:** plain MSE.
 - **Initialisation:** as in Experiment 1, with the same seed. The initial parameters are saved to `init.pt`.
-- **Training:** Adam with the Gao et al. learning rate, batch size 4096, one seed, a budget of about 10 hours on the laptop.
-- **Schedule (B):** $k$ halves from $k_0 = 32$ through 16, 8, 4 and 2, in five equal stages, and reaches 1 at 80% of training. It stays at 1 for the last 20%.
-- **Measurement:** as in Experiment 1. The current $k$, alive features and active features per token are logged at every evaluation. Loss, alive features and decoder recovery are measured at the end, once $k = 1$. Features dead at initialisation are judged at $k_0 = 32$.
+- **Training:** Adam with the Gao et al. learning rate, batch size 4096, one seed, a first budget of 10 hours on the laptop.
+- **Schedule (N):** $k$ = 64, 32, 16, 8 and 4 for 8% of training each, then $k = 2$ for 40% and $k = 1$ for the last 20%.
+- **Extension:** if the run needs longer, `--extend-steps` lengthens it. The part of the schedule not yet reached is stretched in proportion over the new length. An extension made during the $k = 2$ stage therefore lengthens that stage. An extension made after the run reaches $k = 1$ continues at $k = 1$, where dead features cannot revive.
+- **Measurement:** as in Experiment 1. The current $k$, alive features and active features per token are logged at every evaluation. Loss, alive features and decoder recovery are measured at the end, once $k = 1$. Features dead at initialisation are judged at $k_0 = 64$.
 
 ## Decisions
 
 - Fixed-$k$ TopK dropped in favour of $k$-annealing, based on the measurements above.
-- $k_0 = 32$.
-- Schedule B: halving, reaching $k = 1$ at 80% of training. It did best of the three schedules tested on the subset.
-- To revisit later: spending longer at $k = 2$. Most features that die are lost at the final step from $k = 2$ to $k = 1$, so a longer stage at $k = 2$ might keep more of them.
+- First choice: schedule B (halving from $k_0 = 32$, reaching $k = 1$ at 80%), the best of the first three subset tests.
+- Replaced on 2026-10-19 by schedule N, the best of the finer grid. It starts at $k_0 = 64$ and spends 40% of training at $k = 2$.
+- Budget: 10 hours first, then extend if needed.
 
 ## How to run
 
@@ -100,10 +101,10 @@ The same as Experiment 1, except for the encoder and the schedule:
 caffeinate -i python experiments/exp3_k_annealing/run.py
 ```
 
-The script prepares the data if needed and times a few steps at each $k$ of the schedule, since steps at large $k$ are slower. It then chooses the number of steps that fits the 10-hour budget. Training runs with a checkpoint every 10 minutes and a heartbeat every minute that shows the current $k$. The script finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp3/`. `--k0`, `--end-frac` and `--shape` change the schedule.
+The script prepares the data if needed and times a few steps at each $k$ of the schedule, since steps at large $k$ are slower. It then chooses the number of steps that fits the 10-hour budget. Training runs with a checkpoint every 10 minutes and a heartbeat every minute that shows the current $k$. The script finishes with the analysis. Ctrl-C saves and stops, and the same command resumes. Results go to `runs/exp3/`. `--stages` changes the schedule, for example `--stages 64:0.08,32:0.08,16:0.08,8:0.08,4:0.08,2:0.4,1:0.2` for schedule N. `--extend-steps N` lengthens the run, as described under Design. Run it once; to resume after an interrupt, use the plain command.
 
-**Expected cost.** In the sandbox at full scale and batch size 4096, a step took 4.6 s at $k = 32$, about 3.3 s at $k = 16$ down to $k = 2$, and 2.7 s at $k = 1$. The mean over schedule B is 3.4 s, about 25% more than a Top1 step. Peak memory was about 3.7 GB. The laptop ran Top1 steps about 20% faster than the sandbox, so it should fit roughly 13,000 steps into 10 hours. The script measures this itself before training.
+**Expected cost.** In the sandbox at full scale and batch size 4096, a step took 6.8 s at $k = 64$, 4.7 s at $k = 32$, about 3.3 s at $k = 16$ down to $k = 2$, and 2.7 s at $k = 1$. The mean over schedule N is about 3.6 s. Peak memory at $k = 32$ was about 3.7 GB. The laptop ran Top1 steps about 20% faster than the sandbox, so it should fit roughly 12,000 steps into 10 hours. The script measures this itself before training.
 
 ## Code
 
-`experiments/exp3_k_annealing/run.py` describes the experiment and calls the shared runner in `sae_raw/run.py`. The model is `TopKSAE` in `sae_raw/model.py`; with $k = 1$ it matches `Top1SAE`. The schedule is `k_schedule` in `sae_raw/train.py`.
+`experiments/exp3_k_annealing/run.py` describes the experiment and calls the shared runner in `sae_raw/run.py`. The model is `TopKSAE` in `sae_raw/model.py`; with $k = 1$ it matches `Top1SAE`. The schedule is `k_schedule` in `sae_raw/train.py`. `k_stages` lays it out over the run as a list of $k$ and last step, and `stretch_stages` lengthens it for an extension.

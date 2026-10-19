@@ -236,6 +236,21 @@ def test_k_schedule_halving_and_linear():
     assert all(a >= b for a, b in zip(lin, lin[1:]))
 
 
+def test_stage_schedules_and_stretching():
+    from sae_raw.train import k_at, k_stages, stretch_stages
+    sched = dict(shape="stages", stages=[[64, 0.2], [2, 0.6], [1, 0.2]])
+    stages = k_stages(sched, 100)
+    assert stages == [[64, 20], [2, 80], [1, 100]]
+    assert [k_at(s, stages) for s in (1, 20, 21, 80, 81, 100, 150)] == [64, 64, 2, 2, 1, 1, 1]
+    # Extending part-way through the k = 2 stage stretches what is left of it, and the k = 1 stage.
+    assert stretch_stages(stages, 50, 200) == [[64, 20], [2, 140], [1, 200]]
+    # Extending after the schedule has finished continues at k = 1.
+    assert stretch_stages(stages, 100, 150) == [[64, 20], [2, 80], [1, 150]]
+    # The halving shape lays out as before.
+    assert k_stages(dict(k0=8, end_frac=0.5, shape="halving"), 12) == [[8, 2], [4, 4], [2, 6],
+                                                                         [1, 12]]
+
+
 def test_scheduled_training_reaches_k1_and_resumes_identically(tmp_path):
     E = _tiny_problem()
     sched = dict(k0=8, end_frac=0.5, shape="halving")

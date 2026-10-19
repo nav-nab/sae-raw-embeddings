@@ -9,8 +9,8 @@ The setting is chosen so that an exact answer exists. We train on the rows of GP
 Each experiment has a plan in `docs/` and its code in its own folder under `experiments/`.
 
 - **Experiment 1** (plan `docs/experiment_1_top1.md`, results `docs/experiment_1_results.md`, code `experiments/exp1_top1/`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measured what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
-- **Experiment 2** (plan `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, ready to run): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. It goes ahead because revival in Experiment 1 was below 80%. Success is measured by decoder recovery, since the loss cannot reach zero. On the subset, $\lambda = 0.3$ recovered the most tokens of any setup so far.
-- **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, ready to run): as Experiment 1, but with a TopK encoder whose $k$ starts at 32, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery. On the subset, the chosen schedule recovered six times as many tokens as Top1.
+- **Experiment 2** (plan and results `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, done): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. Result after 85,100 steps: 46,590 of 50,257 tokens recovered at cosine above 0.9 and 44,337 above 0.99, with 1.37 active features per token.
+- **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, ready to run): as Experiment 1, but with a TopK encoder whose $k$ starts at 64, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. The schedule (N) was chosen from a grid of subset tests. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery.
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
 
@@ -79,9 +79,9 @@ Run the scripts from the repository root, since `data/` and `runs/` are relative
 3. It trains, with a full-vocabulary evaluation at step 0 and then `--n-evals` more (default 20).
 4. It analyses the result and logs the experiment's conclusion.
 
-`--help` lists all options. Experiment 2 also takes `--l1-coef`, and Experiment 3 takes `--k0`, `--end-frac` and `--shape` to change the schedule.
+`--help` lists all options. Experiment 2 also takes `--l1-coef`, and Experiment 3 takes `--stages` to change the schedule.
 
-**Interrupting and resuming.** A checkpoint is saved every 10 minutes. On Ctrl-C the script finishes the current step, saves a checkpoint and stops. A second Ctrl-C aborts without saving. Running the same command again resumes from the checkpoint with the settings saved in the run directory, and gives the same result as an uninterrupted run. `--fresh` discards the earlier run and starts again. `--extend-steps N` or `--extend-hours H` continues a run past its planned end, from its checkpoint; the earlier analysis is kept as `analysis_step<N>.json`. Runs with a $k$ schedule (Experiment 3) can't be extended, because the schedule depends on the total number of steps.
+**Interrupting and resuming.** A checkpoint is saved every 10 minutes. On Ctrl-C the script finishes the current step, saves a checkpoint and stops. A second Ctrl-C aborts without saving. Running the same command again resumes from the checkpoint with the settings saved in the run directory, and gives the same result as an uninterrupted run. `--fresh` discards the earlier run and starts again. `--extend-steps N` or `--extend-hours H` continues a run past its planned end, from its checkpoint; the earlier analysis is kept as `analysis_step<N>.json`. For a run with a $k$ schedule (Experiment 3), the part of the schedule not yet reached is stretched over the new length. Give `--extend-*` once only. To resume after an interrupt, use the plain command, since repeating the flag extends the run again.
 
 **Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, active features per token, alive count and revival. Each evaluation is also logged in full.
 
@@ -122,7 +122,6 @@ The final analysis recomputes revival from `init.pt` and `model.pt`. It also mea
 
 Ideas to revisit after the experiments above. Each one changes the training recipe or the setting, so each would be reported as a labelled ablation.
 
-- **Longer time at $k = 2$ in Experiment 3's schedule.** On the subset, most features that die are lost at the final step from $k = 2$ to $k = 1$. A longer stage at $k = 2$ might keep more of them.
 - **Encoder-side mean centring.** Initialise the encoder bias as $b_{\mathrm{enc},j} = -w_j^\top\mu$, where $\mu$ is the data mean, and keep the decoder bias at zero. This removes the shared mean component that makes a few features win most tokens. It leaves the target dictionary unchanged.
 
 ## Status
@@ -132,7 +131,7 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Resumable training loop with revival tracking, checkpoints, heartbeat and $k$ schedules
 - [x] Final analysis: revival and decoder recovery
 - [x] Experiment 1: script and full run (results in `docs/experiment_1_results.md`)
-- [x] Experiment 3: schedule chosen (halving from 32, reaching 1 at 80% of training) and script written
+- [x] Experiment 3: schedule N chosen from a subset grid (64, 32, 16, 8, 4 at 8% each, then 2 for 40% and 1 for 20%), and script written
 - [ ] Experiment 3 full run
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
-- [ ] Experiment 2 full run
+- [x] Experiment 2 full run (85,100 steps)

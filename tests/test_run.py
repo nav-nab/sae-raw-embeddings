@@ -82,12 +82,13 @@ def _run_exp3(*args):
 def test_experiment_3_script_end_to_end_with_schedule_and_resume(tmp_path):
     _fake_data(tmp_path / "data")
     common = ["--data-dir", str(tmp_path / "data"), "--run-dir", str(tmp_path / "run"),
-              "--batch-size", "16", "--n-evals", "4", "--k0", "4"]
+              "--batch-size", "16", "--n-evals", "4", "--stages", "4:0.4,2:0.4,1:0.2"]
     r = _run_exp3(*common, "--steps", "40", "--heartbeat-seconds", "0")
     assert r.returncode == 0, r.stderr
     run = tmp_path / "run"
     cfg = json.loads((run / "config.json").read_text())
-    assert cfg["schedule"] == {"k0": 4, "end_frac": 0.8, "shape": "halving"}
+    assert cfg["schedule"] == {"shape": "stages", "stages": [[4, 0.4], [2, 0.4], [1, 0.2]]}
+    assert cfg["k_stages"] == [[4, 16], [2, 32], [1, 40]]
     assert set(cfg["step_seconds_by_k"]) == {"4", "2", "1"}
     log = (run / "run.log").read_text()
     assert "k=4" in log and "k=1" in log and "Result:" in log
@@ -103,6 +104,7 @@ def test_schedule_helpers():
     from sae_raw.run import mean_step_seconds, schedule_ks
     sched = {"k0": 32, "end_frac": 0.8, "shape": "halving"}
     assert schedule_ks(sched) == [32, 16, 8, 4, 2, 1]
+    assert schedule_ks({"shape": "stages", "stages": [[64, 0.5], [2, 0.3], [1, 0.2]]}) == [64, 2, 1]
     by_k = {32: 5.0, 16: 3.0, 8: 2.0, 4: 1.5, 2: 1.2, 1: 1.0}
     expected = 0.16 * (5 + 3 + 2 + 1.5 + 1.2) + 0.2 * 1.0
     assert abs(mean_step_seconds(by_k, sched) - expected) < 0.01  # stage edges round
@@ -143,10 +145,23 @@ def test_extending_a_finished_run_continues_from_its_checkpoint(tmp_path):
     assert "Resuming from" in r.stdout and "Result:" in r.stdout
 
 
-def test_extending_a_scheduled_run_is_refused(tmp_path):
+def test_extending_a_scheduled_run_stretches_the_rest_of_the_schedule(tmp_path):
     _fake_data(tmp_path / "data")
     common = ["--data-dir", str(tmp_path / "data"), "--run-dir", str(tmp_path / "run"),
-              "--batch-size", "16", "--n-evals", "2", "--k0", "2"]
-    assert _run_exp3(*common, "--steps", "10").returncode == 0
-    r = _run_exp3(*common, "--extend-steps", "10")
-    assert r.returncode != 0 and "not supported" in r.stderr
+              "--batch-size", "16", "--n-evals", "4", "--stages", "4:0.4,2:0.4,1:0.2"]
+    run = tmp_path / "run"
+    # Finished run: the extension continues at k = 1.
+    assert _run_exp3(*common, "--steps", "40").returncode == 0
+    r = _run_exp3(*common, "--extend-steps", "20")
+    assert r.returncode == 0, r.stderr
+    cfg = json.loads((run / "config.json").read_text())
+    assert cfg["steps"] == 60 and cfg["k_stages"] == [[4, 16], [2, 32], [1, 60]]
+    assert (run / "analysis_step40.json").exists() and "Result:" in r.stdout
+    rows = (run / "eval_log.csv").read_text().splitlines()[1:]
+    assert [row.split(",")[2] for row in rows][-2:] == ["1", "1"]
+
+
+def test_extending_mid_schedule_lengthens_the_current_stage(tmp_path):
+    from sae_raw.train import stretch_stages
+    # A run stopped at step 20, in the k = 2 stage, then extended from 40 to 80 steps.
+    assert stretch_stages([[4, 16], [2, 32], [1, 40]], 20, 80) == [[4, 16], [2, 56], [1, 80]]

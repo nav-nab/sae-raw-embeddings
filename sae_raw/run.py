@@ -30,7 +30,7 @@ from sae_raw.evaluation import analyse
 from sae_raw.model import build_model
 from sae_raw.train import (CHECKPOINT_FILE, EVAL_LOG_FILE, INIT_FILE, MODEL_FILE, SNAPSHOT_DIR,
                            FrequencySampler, Trainer, UniformSampler, default_lr, fmt_duration,
-                           k_schedule, train)
+                           k_schedule, k_stages, schedule_start_k, stretch_stages, train)
 
 CONFIG_FILE = "config.json"
 ANALYSIS_FILE = "analysis.json"
@@ -117,6 +117,26 @@ def schedule_ks(schedule, n=1000):
     return sorted({k_schedule(s, n, **schedule) for s in range(1, n + 1)}, reverse=True)
 
 
+def parse_stages(text):
+    """Parse "64:0.08,2:0.4,1:0.52" into [[64, 0.08], [2, 0.4], [1, 0.52]]."""
+    stages = []
+    for part in text.split(","):
+        k, frac = part.split(":")
+        stages.append([int(k), float(frac)])
+    if abs(sum(f for _, f in stages) - 1) > 1e-6:
+        raise argparse.ArgumentTypeError("the stage fractions must sum to 1")
+    return stages
+
+
+def format_stages(stages):
+    return ",".join(f"{k}:{frac:g}" for k, frac in stages)
+
+
+def describe_stages(stages):
+    """Readable layout of a schedule over a run, e.g. "k=64 to step 960, k=32 to ..."."""
+    return ", ".join(f"k={k} to step {last:,}" for k, last in stages)
+
+
 def load_config(run_dir):
     return json.loads((Path(run_dir) / CONFIG_FILE).read_text())
 
@@ -155,10 +175,9 @@ def _parser(description, default_run_dir, schedule, l1_coef, batch_size):
     if l1_coef is not None:
         p.add_argument("--l1-coef", type=float, default=l1_coef, help="L1 penalty coefficient")
     if schedule is not None:
-        p.add_argument("--k0", type=int, default=schedule["k0"], help="starting k")
-        p.add_argument("--end-frac", type=float, default=schedule["end_frac"],
-                       help="fraction of training after which k = 1")
-        p.add_argument("--shape", choices=["halving", "linear"], default=schedule["shape"])
+        p.add_argument("--stages", type=parse_stages, default=schedule["stages"],
+                       help="k schedule as k:fraction pairs in order, fractions summing to 1 "
+                            f"(default {format_stages(schedule['stages'])})")
     p.add_argument("--subset", type=int, default=0,
                    help="debugging: train on the N most frequent tokens only, with m = N")
     p.add_argument("--frequency-weighted", action="store_true",
@@ -185,8 +204,9 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
     """Run one experiment end to end (see the module docstring).
 
     model is "top1", "topk" or "l1". For "topk", schedule is the default k
-    schedule (keys k0, end_frac, shape); for "l1", l1_coef is the default L1
-    coefficient. Both can be changed on the command line, as can batch_size.
+    schedule, {"shape": "stages", "stages": [[k, fraction], ...]}; for "l1",
+    l1_coef is the default L1 coefficient. Both can be changed on the command
+    line, as can batch_size.
     report(result, log) logs the experiment-specific conclusion.
     """
     args = _parser(description, default_run_dir, schedule, l1_coef, batch_size).parse_args(argv)
@@ -227,7 +247,7 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
     _, history, finished = train(
         E, steps=cfg["steps"], batch_size=cfg["batch_size"], lr=cfg["lr"], seed=cfg["seed"],
         eval_every=cfg["eval_every"], model=cfg["model"], k=cfg.get("k"),
-        l1_coef=cfg.get("l1_coef"), schedule=sched,
+        l1_coef=cfg.get("l1_coef"), stages=cfg.get("k_stages"),
         counts=train_counts, device=cfg["device"], run_dir=run_dir,
         checkpoint_every=60 * cfg["checkpoint_minutes"], heartbeat_every=cfg["heartbeat_seconds"],
         extra_eta_seconds=ANALYSIS_EVALS * cfg["eval_seconds"], step_seconds_by_k=by_k,
@@ -239,8 +259,9 @@ def run_experiment(name, description, default_run_dir, model, report, schedule=N
     Et = torch.as_tensor(E, dtype=torch.float32)
     V, d = Et.shape
     # Features dead at initialisation are judged at the starting k; the final model at its last k.
-    init = load_model_file(run_dir / INIT_FILE, cfg, d, V, k=sched["k0"] if sched else None)
-    final = load_model_file(run_dir / MODEL_FILE, cfg, d, V, k=1 if sched else None)
+    stages = cfg.get("k_stages")
+    init = load_model_file(run_dir / INIT_FILE, cfg, d, V, k=stages[0][0] if stages else None)
+    final = load_model_file(run_dir / MODEL_FILE, cfg, d, V, k=stages[-1][0] if stages else None)
     result = analyse(init, final, Et, token_weights(V, train_counts))
     result["training_hours"] = round(history[-1]["seconds"] / 3600, 2)
     (run_dir / ANALYSIS_FILE).write_text(json.dumps(result, indent=2))
@@ -254,11 +275,11 @@ def _extend(run_dir, cfg, args, log):
     """Raise the step count of an existing run so that training continues from its checkpoint.
 
     The new steps are a whole number of evaluation intervals. The earlier
-    analysis, if any, is kept as analysis_step<N>.json.
+    analysis, if any, is kept as analysis_step<N>.json. For a run with a k
+    schedule, the part of the schedule after the checkpoint is stretched over
+    the new length (stretch_stages). If the schedule has already reached its
+    last k, that k simply continues.
     """
-    if cfg.get("schedule"):
-        raise SystemExit("--extend-* is not supported for runs with a k schedule: the schedule "
-                         "depends on the total number of steps.")
     if args.extend_steps is not None and args.extend_hours is not None:
         raise SystemExit("give --extend-steps or --extend-hours, not both")
     every = cfg["eval_every"]
@@ -273,6 +294,12 @@ def _extend(run_dir, cfg, args, log):
     if analysis.exists():
         analysis.replace(run_dir / f"analysis_step{old}.json")
     cfg["steps"] = old + extra
+    if cfg.get("k_stages"):
+        ckpt = run_dir / CHECKPOINT_FILE
+        done = torch.load(ckpt, map_location="cpu")["step"] if ckpt.exists() else 0
+        cfg["k_stages"] = stretch_stages(cfg["k_stages"], done, cfg["steps"])
+        log(f"The schedule after step {done:,} is stretched over the new length: "
+            f"{describe_stages(cfg['k_stages'])}.")
     cfg.setdefault("extensions", []).append(
         {"from_step": old, "to_step": cfg["steps"], "when": time.strftime("%Y-%m-%d %H:%M")})
     new_snaps = pick_snapshot_steps(old, cfg["steps"], every, args.n_snapshots)
@@ -289,10 +316,10 @@ def _new_config(name, model, schedule, args, E, log):
     V = E.shape[0]
     sched = None
     if schedule is not None:
-        sched = {"k0": args.k0, "end_frac": args.end_frac, "shape": args.shape}
+        sched = {"shape": "stages", "stages": args.stages}
     cfg = {
         "experiment": name, "model": model, "l1_coef": getattr(args, "l1_coef", None),
-        "k": sched["k0"] if sched else None,
+        "k": schedule_start_k(sched) if sched else None,
         "schedule": sched, "data_dir": args.data_dir, "subset": args.subset, "V": V,
         "d": E.shape[1], "batch_size": args.batch_size, "lr": args.lr or default_lr(V),
         "seed": args.seed, "frequency_weighted": args.frequency_weighted, "hours": args.hours,
@@ -329,6 +356,9 @@ def _new_config(name, model, schedule, args, E, log):
     expected = cfg["steps"] * step_s + (args.n_evals + 1 + ANALYSIS_EVALS) * eval_s
     log(f"  {cfg['steps']:,} steps, evaluation every {cfg['eval_every']:,}, "
         f"expected {fmt_duration(expected)}.")
+    if sched is not None:
+        cfg["k_stages"] = k_stages(sched, cfg["steps"])
+        log(f"  Schedule: {describe_stages(cfg['k_stages'])}.")
     log(f"  Snapshots will be kept at steps "
         f"{', '.join(f'{s:,}' for s in cfg['snapshot_steps'])}.")
     return cfg
