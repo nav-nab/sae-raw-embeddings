@@ -62,3 +62,18 @@ Subset runs, 4,000 steps at batch size 1,024.
 - **To do:** this section has only the $\lambda$ sweep so far. More tests are needed to show that convergence is rare for L1 too. Candidates are the learning rate, the batch size, and a longer run at $\lambda = 0.1$.
 
 `docs/failure_modes.md` is the running source for this part.
+
+## For the discussion: how the starting $k$ scales with vocabulary size
+
+Noted on 2026-10-19, to develop later.
+
+For $k$-annealing, what seems to matter is the share of features alive at initialisation. That share falls as the vocabulary grows, at the same $k$:
+
+| $k$ | 32 | 64 | 128 | 256 |
+|---|---|---|---|---|
+| Alive at initialisation, $V = 2{,}000$ | 93% | 98% | 99.8% | |
+| Alive at initialisation, $V = 50{,}257$ | 76.7% | 86.5% | 93.3% | 97.3% |
+
+So a target share of alive features at the start requires $k_0$ to grow with $V$. Here, reaching 93% takes $k_0 = 32$ at $V = 2{,}000$ and $k_0 = 128$ at $V = 50{,}257$.
+
+The longer-term aim is a set of empirical scaling laws: how $k_0$, and possibly the training budget, must grow with $V$ for recovery to succeed. This would need the alive share measured at several vocabulary sizes between the two above. It would also need a check that the share at the start predicts recovery at the end.
