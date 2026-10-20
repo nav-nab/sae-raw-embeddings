@@ -12,28 +12,32 @@ Recovery throughout counts tokens with a mutual-nearest decoder row at cosine ab
 
 ## Part 1: failure modes at $V = 2{,}000$
 
-The tests on the 2,000 most frequent tokens ($m = 2{,}000$, seed 0). They show that recovery is desirable and expected, but whether it happens is very sensitive to the architecture and the training hyperparameters. Each test changes one choice and reports alive features, active features per token and recovery, out of 2,000.
+The tests on a subvocabulary of 2,000 tokens ($m = 2{,}000$, seed 0). These are the 2,000 GPT-2 tokens that occur most often in English Wikipedia, counted over about 200 million tokens (snapshot `20231101.en`, GPT-2 tokenisation). Frequency only picks the subset. Training samples the 2,000 tokens uniformly, as in the full-scale runs.
+
+The tests show that recovery is desirable and expected, but whether it happens is very sensitive to the architecture and the training hyperparameters. Each test changes one choice and reports alive features, active features per token, and the tokens recovered at cosine above 0.9 and above 0.99, out of 2,000.
 
 The subset run with L1 at $\lambda = 0.3$ is the reference. It shows that recovery is possible on the subset, so a failure there cannot be blamed on the subset itself.
 
-Budgets match within each section but not across them. The TopK tests ran at batch size 512 and the ReLU tests at 1,024.
+Budgets match within each section but not across them. The TopK tests ran at batch size 512 and the ReLU tests at 1,024. This is historical, not a design choice. The first TopK measurements used 512 to keep sandbox runs short, and later TopK tests kept it for comparability. The $\lambda$ sweep used 1,024 to match Experiment 2, whose batch size was set by the cost of a dense L1 step at full scale. Before the write-up, either one family should be rerun at the other's batch size, or the difference should be stated where the two are compared.
 
 ### 1a. TopK SAEs
 
 4,000 steps at batch size 512, except the fixed-$k$ runs, which used 3,000 steps.
 
-| Test | Schedule | Alive at end | Active per token | Recovered |
-|---|---|---|---|---|
-| Top1 | $k = 1$ throughout | 382 | 1 | 227 |
-| Fixed $k$ (3,000 steps) | $k$ = 2, 4, 8, 16, 32 | 558 to 1,778 | $k$ | 162, 73, 7, 0, 0 |
-| Annealing, low start | $2 \to 1$; $4 \to 2 \to 1$ | 545; 750 | 1 | 295; 506 |
-| Annealing, varying $k_0$ | Halving to 1 at 80%, $k_0$ = 8, 16, 32, 64, 128 | 1,025 to 1,482 | 1 | 851, 1,171, 1,362, 1,454, 1,438 |
-| Annealing, varying the low end | From 32; longer $k = 2$, a $k = 3$ stage, or less time at $k = 1$ | 1,408 to 1,441 | 1 | 1,363 to 1,402 |
-| Annealing, linear | Linear from 32 to 1 at 50% | 1,188 | 1 | 1,057 |
-| **Annealing N** | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,532 | 1 | **1,501** |
-| Annealing O | As N, starting at 128 | 1,523 | 1 | 1,499 |
-| O with AuxK, residual target (A) | $\alpha$ = 1/32, 1/8 | 1,507; 1,516 | 1 | 1,476; 1,478 |
-| O with AuxK, token target at $k = 1$ (B) | $\alpha$ = 1/32, 1/8, 1/2 | 1,525 to 1,555 | 1 | 1,503; 1,542; 1,538 |
+| Test | Schedule | Alive at end | Active per token | Recovered > 0.9 | Recovered > 0.99 |
+|---|---|---|---|---|---|
+| Top1 | $k = 1$ throughout | 382 | 1 | 227 | 113 |
+| Fixed $k$ (3,000 steps) | $k$ = 2, 4, 8, 16, 32 | 558 to 1,778 | $k$ | 162, 73, 7, 0, 0 | 13, 0, 0, 0, 0 |
+| Annealing, low start | $2 \to 1$; $4 \to 2 \to 1$ | 545; 750 | 1 | 295; 506 | 136; 250 |
+| Annealing, varying $k_0$ | Halving to 1 at 80%, $k_0$ = 8, 16, 32, 64, 128 | 1,025 to 1,482 | 1 | 851, 1,171, 1,362, 1,454, 1,438 | 530, 849, 1,068, 1,184, 1,171 |
+| Annealing, varying the low end | From 32; longer $k = 2$, a $k = 3$ stage, or less time at $k = 1$ | 1,408 to 1,441 | 1 | 1,363 to 1,402 | 1,065 to 1,119 |
+| Annealing, linear | Linear from 32 to 1 at 50% | 1,188 | 1 | 1,057 | 776 |
+| **Annealing N** | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,532 | 1 | **1,501** | **1,267** |
+| Annealing O | As N, starting at 128 | 1,523 | 1 | 1,499 | 1,250 |
+| O with AuxK, residual target (A) | $\alpha$ = 1/32, 1/8 | 1,507; 1,516 | 1 | 1,476; 1,478 | 1,229; 1,235 |
+| O with AuxK, token target at $k = 1$ (B) | $\alpha$ = 1/32, 1/8, 1/2 | 1,525 to 1,555 | 1 | 1,503; 1,542; 1,538 | 1,258; 1,304; 1,302 |
+
+The 0.99 counts for the fixed-$k$ runs come from a rerun on 2026-10-20, since the first run did not save them. The rerun used the same seed, and its other figures differ from the first run's by under 1%. The 0.99 count for $k = 32$ is 0, because its 0.9 count is already 0.
 
 - **Top1 fails** because most features are dead at initialisation and never receive gradient.
 - **Fixed $k > 1$ fails** in the opposite way. Features stay alive, but every token uses all $k$ of them, so no feature lines up with a token.
@@ -44,12 +48,12 @@ Budgets match within each section but not across them. The TopK tests ran at bat
 
 4,000 steps at batch size 1,024.
 
-| $\lambda$ | Alive at end | Active per token | Recovered |
-|---|---|---|---|
-| 0.03 | 2,000 | 79.5 | 3 |
-| 0.1 | 2,000 | 5.0 | 1,055 |
-| **0.3 (reference)** | 1,894 | 1.7 | **1,710** |
-| 1 | 895 | 1.7 | 707 |
+| $\lambda$ | Alive at end | Active per token | Recovered > 0.9 | Recovered > 0.99 |
+|---|---|---|---|---|
+| 0.03 | 2,000 | 79.5 | 3 | 0 |
+| 0.1 | 2,000 | 5.0 | 1,055 | 622 |
+| **0.3 (reference)** | 1,894 | 1.7 | **1,710** | **1,516** |
+| 1 | 895 | 1.7 | 707 | 425 |
 
 - **Too weak a penalty** leaves codes dense, so no feature lines up with a token.
 - **Too strong a penalty** kills features early: half are dead within 500 steps at $\lambda = 1$.
