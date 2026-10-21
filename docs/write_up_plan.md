@@ -37,7 +37,7 @@ Budgets match within each section but not across them. The TopK tests ran at bat
 | O with AuxK, residual target (A) | $\alpha$ = 1/32, 1/8 | 1,507; 1,516 | 1 | 1,476; 1,478 | 1,229; 1,235 |
 | O with AuxK, token target at $k = 1$ (B) | $\alpha$ = 1/32, 1/8, 1/2 | 1,525 to 1,555 | 1 | 1,503; 1,542; 1,538 | 1,258; 1,304; 1,302 |
 
-The 0.99 counts for the fixed-$k$ runs come from a rerun on 2026-10-20, since the first run did not save them. The rerun used the same seed, and its other figures differ from the first run's by under 1%. The 0.99 count for $k = 32$ is 0, because its 0.9 count is already 0.
+The 0.99 counts for the fixed-$k$ runs come from a rerun on 2026-10-20, since the first run did not save them. The rerun used the same seed, and its other figures differ from the first run's by under 1%.
 
 - **Top1 fails** because most features are dead at initialisation and never receive gradient.
 - **Fixed $k > 1$ fails** in the opposite way. Features stay alive, but every token uses all $k$ of them, so no feature lines up with a token.
