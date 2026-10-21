@@ -178,8 +178,9 @@ class Trainer:
     """Model, optimiser, sampler and evaluation history of one training run."""
 
     def __init__(self, E, lr, seed, model="top1", l1_coef=None, k=None, counts=None,
-                 device="cpu"):
+                 device="cpu", eval_extra=None):
         self.E = torch.as_tensor(E, dtype=torch.float32, device=device)
+        self.eval_extra = eval_extra  # optional fn(model, E) -> dict of extra evaluation fields
         V, d = self.E.shape
         self.model = build_model(model, d, V, seed=seed, l1_coef=l1_coef, k=k).to(device)
         self.init_state = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
@@ -212,6 +213,8 @@ class Trainer:
                   "minibatch_loss": loss, "minibatch_mse": mse,
                   **summarize(sq_err, l0, active, self.E, self.p),
                   **revival(self.dead_at_init, changed_features(self.init_state, self.model))}
+        if self.eval_extra is not None:
+            record.update(self.eval_extra(self.model, self.E))
         self.history.append(record)
         return record
 
@@ -283,7 +286,7 @@ class _StopOnInterrupt:
 def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None, k=None,
           counts=None, device="cpu", run_dir=None, checkpoint_every=600,
           heartbeat_every=60, extra_eta_seconds=0.0, schedule=None, step_seconds_by_k=None,
-          snapshot_steps=(), stages=None, log=print):
+          snapshot_steps=(), stages=None, eval_extra=None, log=print):
     """Train an SAE with m = V on the rows of E.
 
     model is "top1" (Experiment 1), "l1" (Experiment 2, needs l1_coef) or
@@ -308,6 +311,9 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
     step time. The heartbeat then estimates the time left from these, scaled
     to the speed observed so far, since steps at large k are slower.
 
+    eval_extra, if given, is called as eval_extra(model, E) at every
+    evaluation, and the fields of the dict it returns are added to the record.
+
     Returns (model, history, finished). finished is False if the run was
     interrupted; call train() again with the same run_dir to continue.
     """
@@ -318,7 +324,8 @@ def train(E, steps, batch_size, lr, seed, eval_every, model="top1", l1_coef=None
         if model != "topk":
             raise ValueError("a k schedule needs the topk model")
         k = stages[0][0]
-    tr = Trainer(E, lr, seed, model=model, l1_coef=l1_coef, k=k, counts=counts, device=device)
+    tr = Trainer(E, lr, seed, model=model, l1_coef=l1_coef, k=k, counts=counts, device=device,
+                 eval_extra=eval_extra)
     if run_dir is not None:
         run_dir = Path(run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)

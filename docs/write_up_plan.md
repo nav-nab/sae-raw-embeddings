@@ -58,7 +58,7 @@ The 0.99 counts for the fixed-$k$ runs come from a rerun on 2026-10-20, since th
 - **Too weak a penalty** leaves codes dense, so no feature lines up with a token.
 - **Too strong a penalty** kills features early: half are dead within 500 steps at $\lambda = 1$.
 - Only a narrow range of $\lambda$ works.
-- **To do:** this section has only the $\lambda$ sweep so far. More tests are needed to show that L1 is as sensitive as TopK. Candidates are the learning rate, the batch size, and a longer run at $\lambda = 0.1$.
+- **Planned: Experiment 4** (`docs/experiment_4_relu_grid.md`). A grid over $\lambda$ (0.03, 0.1, 0.2, 0.3, 0.5, 1), the learning rate ($\tfrac{1}{4}$, 1 and 4 times the Gao rule) and the batch size (256, 1,024, 4,096): 54 cells, one seed. Recovery is measured along each run at 0.5, 1, 2, 4 and 8 million tokens, so training length is the fourth axis. All other hyperparameters stay fixed. Only large differences between cells will be interpreted. The grid will replace the $\lambda$ sweep above as this section's main table.
 
 `docs/failure_modes.md` is the running source for this part.
 

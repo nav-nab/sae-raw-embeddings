@@ -150,3 +150,9 @@ def analyse(init_model, final_model, E, p, thresholds=(0.9, 0.99)):
         **summarize(sq_err, l0, active, E, p),
         **recovery_summary(*recovery(final_model.W_dec, E), thresholds=thresholds),
     }
+
+
+@torch.no_grad()
+def recovery_fields(model, E, thresholds=(0.9, 0.99)):
+    """Decoder recovery of a model, as evaluation fields (for train's eval_extra)."""
+    return recovery_summary(*recovery(model.W_dec, E), thresholds=thresholds)
