@@ -115,7 +115,14 @@ At the same $k$, fewer features are alive at initialisation in a larger vocabula
 | 40,000 | 22% | 54% | 79% | 88% | 94.5% | 97.9% |
 | 50,257 | 21% | 52% | 77% | 87% | 93.4% | 97.3% |
 
-Keeping the same share alive at the start therefore requires $k_0$ to grow with $V$. For 93% alive, the $k$ needed is about 31, 45, 55, 73, 92, 108 and 123 across these sizes. These values are interpolated between the measured powers of two. That is roughly fourfold growth in $k$ for 25-fold growth in $V$, close to $k \propto V^{0.43}$ overall, though the growth speeds up at larger $V$. One confound: larger subvocabularies also add rarer tokens.
+Keeping the same share alive at the start therefore requires $k_0$ to grow with $V$. For 93% alive, the $k$ needed grows from 32 at $V = 2{,}000$ to 123 at $V = 50{,}257$.
+
+The shape of this growth depends on which tokens make up each subvocabulary:
+
+- **Random tokens: a power law in $V$.** For random subvocabularies, $k \approx 2.9\,V^{0.34}$ for 93% alive, with an exponent of 0.34 to 0.37 across target shares of 90% to 97%. This is the effect of size alone, and the clean scaling law for the write-up.
+- **Most frequent tokens: faster growth at large $V$.** Our pilots used the most frequent tokens, which are easier to cover than a random sample. As a frequency subvocabulary grows, it adds rarer tokens, and the needed $k$ rises faster than size alone would explain until it meets the random curve at the full table. Over 27 sizes, a small power plus a linear term fits this curve: $k \approx 9.0\,V^{0.16} + 0.0014\,V$ for 93% alive. This curve is the relevant one for carrying a schedule from the pilot subset to the full table.
+
+Details are in `docs/experiment_5_alive_at_init.md`.
 
 At the two sizes trained so far, starting runs this way gave similar recovery: 68% (schedule B on the subset, $k_0 = 32$) and 70% (Experiment 3, $k_0 = 128$). Whether this holds at the sizes in between is the next experiment.
 
