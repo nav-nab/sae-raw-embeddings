@@ -150,7 +150,7 @@ In order of priority:
 1. ~~**Alive share at initialisation against $k$ at intermediate vocabulary sizes**~~ **Done (Experiment 5, 2026-10-26).** Sizes 2,000 to 50,257, $k$ from 1 to 256, two seeds. Results in Part 3a.
 2. **Annealing runs at two or three intermediate sizes** (Part 3a), with $k_0$ chosen to give the same alive share at the start. This tests whether the alive share at the start predicts recovery at the end. Each run is short compared with Experiment 3.
 3. **ReLU runs at the same intermediate sizes** (Part 3b). These would use a few values of $\lambda$, trained long enough to converge, to measure how training length and the best $\lambda$ change with $V$. The subset grid showed that progress depends on learning rate × steps, so the runs can use a small batch and the Gao rate.
-4. ~~**A check of the ReLU theory** (Part 2).~~ **Done (2026-10-26).** Every GPT-2 embedding is a vertex of the convex hull, so exact one-hot codes exist. Results at the end of Appendix B.
+4. ~~**A check of the ReLU theory** (Part 2).~~ **Done (Experiment 6, 2026-10-26).** Every GPT-2 embedding is a vertex of the convex hull, so exact one-hot codes exist. Results at the end of Appendix B.
 5. **Write-up housekeeping.** Add the Experiment 3 results to its doc and to `docs/failure_modes.md`.
 
 One optional item is a TopK check of learning rate and batch size, mirroring the ReLU grid. It would show whether TopK's failures are also partly undertraining. I'd leave it out unless a reader is likely to ask, because the TopK losses happen at the drops in $k$, which more training at $k = 1$ cannot reverse.
@@ -218,7 +218,7 @@ since every term in the sum is at most zero. So the coefficient on $x_j$ cannot 
 
 The first test differs from a tied encoder. With $w_j$ tied to the decoder row $x_j/\lvert x_j\rvert$, the coefficient on $x_j$ forces $b_j = -\lambda/2$, so every other token needs $w_j \cdot x_i \le \lambda/2$. That is far stricter, and depends on $\lambda$. Our SAEs have untied encoders, so only the hull condition matters.
 
-**Results for GPT-2 (2026-10-26, sandbox, about 20 minutes).**
+**Results for GPT-2 (Experiment 6, `docs/experiment_6_hull_vertices.md`).**
 
 | Test | Full table (50,257) | Subset (2,000) |
 |---|---|---|

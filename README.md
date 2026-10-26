@@ -11,8 +11,9 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 1** (plan `docs/experiment_1_top1.md`, results `docs/experiment_1_results.md`, code `experiments/exp1_top1/`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measured what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
 - **Experiment 2** (plan and results `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, done): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. Result after 85,100 steps: 46,590 of 50,257 tokens recovered at cosine above 0.9 and 44,337 above 0.99, with 1.37 active features per token.
 - **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, done): as Experiment 1, but with a TopK encoder whose $k$ starts at 128, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. The schedule (O) was chosen from a grid of subset tests and the share of features alive at initialisation at full scale. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery. Result: 35,261 of 50,257 tokens recovered at cosine above 0.9 (70%), with nearly every surviving feature correct; features die when $k$ drops.
-- **Experiment 4** (plan `docs/experiment_4_relu_grid.md`, code `experiments/exp4_relu_grid/`, ready to run): a grid of L1 ReLU SAEs on the 2,000-token subvocabulary over the L1 coefficient, the learning rate and the batch size (54 cells), with recovery measured along each run at 0.5 to 8 million tokens. It maps the ReLU failure modes for Part 1 of the write-up.
+- **Experiment 4** (plan `docs/experiment_4_relu_grid.md`, code `experiments/exp4_relu_grid/`, done): a grid of L1 ReLU SAEs on the 2,000-token subvocabulary over the L1 coefficient, the learning rate and the batch size (54 cells), with recovery measured along each run at 0.5 to 8 million tokens. It maps the ReLU failure modes for Part 1 of the write-up.
 - **Experiment 5** (`docs/experiment_5_alive_at_init.md`, code `experiments/exp5_alive_at_init/`, done): the share of TopK features alive at initialisation for vocabulary sizes from 2,000 to 50,257 and $k$ from 1 to 256, with no training. It gives the starting $k$ needed for a given share alive as the vocabulary grows (Part 3 of the write-up).
+- **Experiment 6** (`docs/experiment_6_hull_vertices.md`, code `experiments/exp6_hull_vertices/`, done): whether a ReLU encoder can output exact one-hot codes, which holds for a token exactly when its embedding is a vertex of the convex hull of the table. Result: every GPT-2 embedding is a vertex, and the margin of separation predicts which tokens Experiment 2 recovered.
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
 
@@ -42,6 +43,7 @@ experiments/
   exp3_k_annealing/run.py  runs all of Experiment 3
   exp4_relu_grid/run.py    runs all of Experiment 4
   exp5_alive_at_init/run.py  measures features alive at initialisation (Experiment 5)
+  exp6_hull_vertices/run.py  tests which embeddings are convex-hull vertices (Experiment 6)
 scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
 docs/
@@ -51,6 +53,7 @@ docs/
   experiment_3_k_annealing.md  plan: TopK with k lowered to 1 during training
   experiment_4_relu_grid.md    plan: grid of L1 ReLU SAEs on the subvocabulary
   experiment_5_alive_at_init.md  features alive at initialisation, by vocabulary size
+  experiment_6_hull_vertices.md  one-hot codes and the convex hull of the embeddings
   failure_modes.md             running table of failed attempts and why they failed
   write_up_plan.md             framing of the write-up: one success mode, many failure modes
   planning/                    original planning documents, kept unchanged as a record
@@ -147,5 +150,6 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 4: script written
 - [x] Experiment 4 grid run
 - [x] Experiment 5: alive at initialisation by vocabulary size
+- [x] Experiment 6: one-hot codes and convex-hull vertices
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
 - [x] Experiment 2 full run (85,100 steps)
