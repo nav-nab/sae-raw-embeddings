@@ -64,6 +64,11 @@ def eval_extra(model, E):
     return {**recovery_fields(model, E), **code_spread_fields(model, E)}
 
 
+def main(argv=None):
+    """Run the experiment; returns None if it was interrupted."""
+    return run_grids("experiment_9_relu_sizes", __doc__, "runs/exp9", all_cells(), argv=argv,
+                     eval_extra=eval_extra)
+
+
 if __name__ == "__main__":
-    run_grids("experiment_9_relu_sizes", __doc__, "runs/exp9", all_cells(),
-              eval_extra=eval_extra)
+    main()

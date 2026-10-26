@@ -53,6 +53,7 @@ experiments/
   exp9_relu_sizes/run.py     runs all of Experiment 9 (--sizes, --extend)
 scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
+  run_night1.py       runs Experiments 7, 8 and 9 (5,000 and 10,000 tokens) in one go
 docs/
   experiment_1_top1.md         plan: how many dead Top1 features revive?
   experiment_1_results.md      results and interpretation of Experiment 1
@@ -96,6 +97,8 @@ caffeinate -i python experiments/exp7_topk_lr_steps/run.py
 caffeinate -i python experiments/exp8_topk_sizes/run.py
 caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 5000 10000
 ```
+
+`caffeinate -i python scripts/run_night1.py` runs the last three of these one after another, for an unattended night. Ctrl-C stops it without starting the later experiments, and running it again resumes. Night 2 is `caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 20000`.
 
 Run the scripts from the repository root, since `data/` and `runs/` are relative paths. Run one experiment at a time: each one sizes itself to the whole machine, so two at once would each take about twice as long. `caffeinate -i` keeps the Mac awake. Each script does every step:
 

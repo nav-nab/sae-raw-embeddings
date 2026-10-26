@@ -186,16 +186,13 @@ The geometry of the embeddings barely changes across these sizes, so any change 
 
 ## Next experiments
 
-In order of priority:
+Three experiments are outstanding. Scripts for all three are written and checked, and they run on the laptop over two nights.
 
-1. ~~**Alive share at initialisation against $k$ at intermediate vocabulary sizes**~~ **Done (Experiment 5, 2026-10-26).** Sizes 2,000 to 50,257, $k$ from 1 to 256, two seeds. Results in Part 3a.
-2. **Annealing runs at two or three intermediate sizes** (Part 3a), with $k_0$ chosen to give the same alive share at the start. This tests whether the alive share at the start predicts recovery at the end. **Script ready: Experiment 8** (`docs/experiment_8_topk_sizes.md`), at 5,000, 10,000 and 20,000 tokens with $k_0$ = 42, 55 and 71 (93% alive). Night 1.
-3. **ReLU runs at the same intermediate sizes** (Part 3b). These would use a few values of $\lambda$, trained long enough to converge, to measure how training length and the best $\lambda$ change with $V$. The subset grid showed that progress depends on learning rate × steps, so the runs can use a small batch and the Gao rate. **Script ready: Experiment 9** (`docs/experiment_9_relu_sizes.md`), $\lambda$ = 0.1, 0.3 and 1 at each size and 0.03 at 5,000, batch 256. Runs can be extended. 5,000 and 10,000 on night 1, 20,000 on night 2.
-4. ~~**A check of the ReLU theory** (Part 2).~~ **Done (Experiment 6, 2026-10-26).** Every GPT-2 embedding is a vertex of the convex hull, so exact one-hot codes exist. Results at the end of Appendix B.
-5. ~~**Write-up housekeeping.**~~ **Done (2026-10-26).** The Experiment 3 results and the AuxK pilots are in its doc and in `docs/failure_modes.md`.
-6. **TopK with more training and other learning rates (Experiment 7, `docs/experiment_7_topk_lr_steps.md`).** The best subset schedule (T10) at 2 and 4 times the steps, and at half and twice the learning rate. Tests whether learning rate × steps, the main lever for ReLU, reduces the features TopK loses at the drop to $k = 1$. Script ready; to be run on the laptop.
+1. **Experiment 7: TopK with more training and other learning rates** (Part 1, `docs/experiment_7_topk_lr_steps.md`). The best subset schedule (T10) at 2 and 4 times the steps, and at half and twice the learning rate. It tests whether learning rate × steps, the main lever for ReLU, reduces the features TopK loses at the drop to $k = 1$. Night 1, about 1 hour.
+2. **Experiment 8: TopK annealing at intermediate sizes** (Part 3a, `docs/experiment_8_topk_sizes.md`). The 5,000, 10,000 and 20,000 most frequent tokens, starting at $k_0$ = 42, 55 and 71, which leave 93% of features alive at initialisation. It tests whether matching the share alive at the start also matches recovery at the end. Night 1, under 1 hour.
+3. **Experiment 9: ReLU SAEs at intermediate sizes** (Part 3b, `docs/experiment_9_relu_sizes.md`). The same sizes, with $\lambda$ = 0.1, 0.3 and 1 at each size and 0.03 at 5,000, at batch size 256 and the Gao rate. It measures how the training needed and the best $\lambda$ change with $V$. Runs keep their checkpoints so that they can be extended. 5,000 and 10,000 tokens on night 1 (about 4 hours), 20,000 on night 2 (about 12 to 14 hours).
 
-One optional item is a TopK check of learning rate and batch size, mirroring the ReLU grid. It would show whether TopK's failures are also partly undertraining. I'd leave it out unless a reader is likely to ask, because the TopK losses happen at the drops in $k$, which more training at $k = 1$ cannot reverse.
+`scripts/run_night1.py` runs everything for night 1 in one command.
 
 ## Appendix A: why the embeddings minimise the L1 loss
 

@@ -52,6 +52,11 @@ def eval_extra(model, E):
     return {**recovery_fields(model, E), "n_top1": n_top1(model, E)}
 
 
+def main(argv=None):
+    """Run the experiment; returns None if it was interrupted."""
+    return run_grid("experiment_7_topk_lr_steps", __doc__, "runs/exp7",
+                    make_topk_cells(CELLS_SPEC), argv=argv, eval_extra=eval_extra)
+
+
 if __name__ == "__main__":
-    run_grid("experiment_7_topk_lr_steps", __doc__, "runs/exp7", make_topk_cells(CELLS_SPEC),
-             eval_extra=eval_extra)
+    main()
