@@ -1,142 +1,128 @@
 # Write-up plan
 
-Status: three-part structure agreed on 2026-10-20. More exploratory work comes before the write-up: ReLU tests on the subvocabulary for Part 1, and the measurements for Part 3.
+Status: restructured on 2026-10-26 into three parts: TopK SAEs, ReLU SAEs with an L1 penalty, and scaling laws. The experiments still needed are listed at the end.
 
 ## Thesis
 
-With a dictionary of $m = V$ features trained on the raw token embedding table, theory says the SAE's features should be the token embeddings. For a Top1 SAE with unit-norm decoder rows and no decoder bias, the normalised embeddings are the zero-loss dictionary. For other sparse SAEs they remain the natural target.
+With a dictionary of $m = V$ features trained on the raw token embedding table, the SAE's features should be the token embeddings. Whether training actually finds them depends mainly on the architecture.
 
-The paper shows that whether training actually finds this dictionary depends heavily on the architecture and the training hyperparameters. Recovery is possible, but it is the exception. The setups that succeeded were found by trial and error.
+- **TopK SAEs** lose features whenever $k$ is small or drops, and dead features almost never revive. The best TopK setup recovers 70% of GPT-2's tokens.
+- **ReLU SAEs with an L1 penalty** recover the embeddings across a wide region of hyperparameters, provided they train long enough: 93% at full scale and 98% on a subvocabulary. Outside that region they fail in one of two ways: dense codes from too little training, or dead features from too much pressure.
 
-Recovery throughout counts tokens with a mutual-nearest decoder row at cosine above 0.9 (and 0.99).
+## Setting and measurement
 
-## Part 1: failure modes at $V = 2{,}000$
+- **Data.** The GPT-2 Small input embedding table: $V = 50{,}257$ rows in $d = 768$ dimensions. Pilots use a subvocabulary of the 2,000 GPT-2 tokens that occur most often in English Wikipedia (about 200 million tokens counted, snapshot `20231101.en`). Frequency only picks the subset. Training always samples tokens uniformly.
+- **Model.** $m = V$ features, decoder rows of unit norm, no decoder bias. Initialisation uses no information from the embeddings: random Gaussian decoder rows, encoder copied from the decoder, zero encoder bias.
+- **Training.** Adam, with the Gao et al. learning rate rule $2\times10^{-4}/\sqrt{m/2^{14}}$ as the base value. One seed per run.
+- **Recovery.** A token is recovered if some decoder row is its mutual nearest neighbour at cosine above 0.9 (and, more strictly, above 0.99).
 
-The tests on a subvocabulary of 2,000 tokens ($m = 2{,}000$, seed 0). These are the 2,000 GPT-2 tokens that occur most often in English Wikipedia, counted over about 200 million tokens (snapshot `20231101.en`, GPT-2 tokenisation). Frequency only picks the subset. Training samples the 2,000 tokens uniformly, as in the full-scale runs.
+## Part 1: TopK SAEs
 
-The tests show that recovery is desirable and expected, but whether it happens is very sensitive to the architecture and the training hyperparameters. Each test changes one choice and reports alive features, active features per token, and the tokens recovered at cosine above 0.9 and above 0.99, out of 2,000.
+### Theory: the zero-loss dictionary
 
-The subset run with L1 at $\lambda = 0.3$ is the reference. It shows that recovery is possible on the subset, so a failure there cannot be blamed on the subset itself.
+A Top1 SAE ($k = 1$) reconstructs each token as one decoder row times a non-negative coefficient. With unit-norm rows and no decoder bias, a token $x$ is reconstructed exactly only if some row equals $x/\lvert x\rvert$. With $m = V$, the zero-loss dictionary is therefore the set of normalised embeddings, unique up to permutation as long as no two embeddings point the same way. For $k > 1$ this uniqueness is lost: a token can be rebuilt from several features, and many other dictionaries also reach zero loss.
 
-Budgets match within each section but not across them. The TopK tests ran at batch size 512 and the ReLU tests at 1,024. This is historical, not a design choice. The first TopK measurements used 512 to keep sandbox runs short, and later TopK tests kept it for comparability. The $\lambda$ sweep used 1,024 to match Experiment 2, whose batch size was set by the cost of a dense L1 step at full scale. Before the write-up, either one family should be rerun at the other's batch size, or the difference should be stated where the two are compared.
+### The trade-off between sparsity and keeping features alive
 
-### 1a. TopK SAEs
+A TopK feature receives gradient only on tokens where it is among the top $k$. This creates a trade-off:
 
-4,000 steps at batch size 512, except the fixed-$k$ runs, which used 3,000 steps.
+- **A small $k$** gives the sparse codes that make the embeddings the target, but most features are never selected. At $k = 1$, only 20.6% of features are alive at initialisation on the full table. A feature that is never selected gets no gradient, so it stays dead.
+- **A large $k$** keeps features alive, but every token then uses all $k$ slots. No feature has to line up with a single token.
+- **$k$-annealing** tries to get both, by starting with a large $k$ and lowering it to 1. Each drop in $k$ is a sudden increase in sparsity for every token at once, and each one kills features.
 
-| Test | Schedule | Alive at end | Active per token | Recovered > 0.9 | Recovered > 0.99 |
-|---|---|---|---|---|---|
-| Top1 | $k = 1$ throughout | 382 | 1 | 227 | 113 |
-| Fixed $k$ (3,000 steps) | $k$ = 2, 4, 8, 16, 32 | 558 to 1,778 | $k$ | 162, 73, 7, 0, 0 | 13, 0, 0, 0, 0 |
-| Annealing, low start | $2 \to 1$; $4 \to 2 \to 1$ | 545; 750 | 1 | 295; 506 | 136; 250 |
-| Annealing, varying $k_0$ | Halving to 1 at 80%, $k_0$ = 8, 16, 32, 64, 128 | 1,025 to 1,482 | 1 | 851, 1,171, 1,362, 1,454, 1,438 | 530, 849, 1,068, 1,184, 1,171 |
-| Annealing, varying the low end | From 32; longer $k = 2$, a $k = 3$ stage, or less time at $k = 1$ | 1,408 to 1,441 | 1 | 1,363 to 1,402 | 1,065 to 1,119 |
-| Annealing, linear | Linear from 32 to 1 at 50% | 1,188 | 1 | 1,057 | 776 |
-| **Annealing N** | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,532 | 1 | **1,501** | **1,267** |
-| Annealing O | As N, starting at 128 | 1,523 | 1 | 1,499 | 1,250 |
-| O with AuxK, residual target (A) | $\alpha$ = 1/32, 1/8 | 1,507; 1,516 | 1 | 1,476; 1,478 | 1,229; 1,235 |
-| O with AuxK, token target at $k = 1$ (B) | $\alpha$ = 1/32, 1/8, 1/2 | 1,525 to 1,555 | 1 | 1,503; 1,542; 1,538 | 1,258; 1,304; 1,302 |
+### 1a. Failure modes
 
-The 0.99 counts for the fixed-$k$ runs come from a rerun on 2026-10-20, since the first run did not save them. The rerun used the same seed, and its other figures differ from the first run's by under 1%.
+Subset runs ($V = m = 2{,}000$), 4,000 steps at batch size 512 unless marked. Recovered counts are out of 2,000.
 
-- **Top1 fails** because most features are dead at initialisation and never receive gradient.
-- **Fixed $k > 1$ fails** in the opposite way. Features stay alive, but every token uses all $k$ of them, so no feature lines up with a token.
-- **$k$-annealing is a partial success.** A large starting $k$ keeps features alive, and recovery rises with $k_0$ until nearly all features are alive at the start. In every schedule, 15% to 20% of the alive features die at the final step from $k = 2$ to $k = 1$. The shape of the low end changes little. The best schedules recover 75% of the subset, against 86% for the reference.
-- **An auxiliary loss for dead features does not fix the drops.** AuxK (Gao et al., 2024) trains dead features to reconstruct the residual. Variant A is the standard form. Variant B instead targets the whole token at $k = 1$, for tokens reconstructed at cosine below about 0.98. A gives nothing. B gives about 40 more tokens than O, the same at $\alpha = 1/8$ and $1/2$, which is close to the single-seed noise. Both use $k_{\text{aux}} = 32$ and call a feature dead after 20 steps without firing.
+| Test | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
+|---|---|---|---|
+| Top1 | 382 | 227 | 113 |
+| Fixed $k$ = 2, 4, 8, 16, 32 (3,000 steps) | 558 to 1,778 | 162, 73, 7, 0, 0 | 13, 0, 0, 0, 0 |
+| Annealing with a low start: $2 \to 1$; $4 \to 2 \to 1$ | 545; 750 | 295; 506 | 136; 250 |
+| Annealing from $k_0$ = 8, 16 (halving, $k = 1$ at 80%) | 1,025; 1,265 | 851; 1,171 | 530; 849 |
 
-### 1b. ReLU SAEs with an L1 penalty
+- **Top1 fails** because most features are dead at initialisation and never revive. At full scale (Experiment 1), none of the 39,914 features dead at initialisation revived, 259 features were alive at the end, and 16 tokens were recovered.
+- **Fixed $k > 1$ fails** in the opposite way. Features stay alive, but codes use all $k$ slots, and recovery is gone by $k = 16$.
+- **Annealing from a small $k_0$ fails** because too few features are alive at the start.
+- **An auxiliary loss does not rescue the dead features.** AuxK (Gao et al., 2024) trains dead features to reconstruct the residual. An argument predicts this should fail at $k = 1$. A dead feature aligned with the residual of a token coded at cosine $\cos\theta$ scores about $\lvert x\rvert\sin\theta$ on that token, against $\lvert x\rvert\cos\theta$ for the incumbent: at $\cos\theta = 0.9$, $0.44\lvert x\rvert$ against $0.9\lvert x\rvert$. On the subset with schedule O, standard AuxK gave nothing (1,476 and 1,478 recovered, against 1,499 without it). A variant that targets the whole token at $k = 1$ gave about 40 more tokens, which is close to the noise. Even before the drops it could not help, because features die *at* the drops.
 
-4,000 steps at batch size 1,024.
+### 1b. Successes: annealing from a large $k$
 
-| $\lambda$ | Alive at end | Active per token | Recovered > 0.9 | Recovered > 0.99 |
+| Run | Schedule | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
 |---|---|---|---|---|
-| 0.03 | 2,000 | 79.5 | 3 | 0 |
-| 0.1 | 2,000 | 5.0 | 1,055 | 622 |
-| **0.3 (reference)** | 1,894 | 1.7 | **1,710** | **1,516** |
-| 1 | 895 | 1.7 | 707 | 425 |
+| Subset, B | Halving from 32, $k = 1$ at 80% | 1,414 | 1,362 (68%) | 1,068 |
+| Subset, N | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1,532 | 1,501 (75%) | 1,267 |
+| Subset, O | As N, starting at 128 | 1,523 | 1,499 (75%) | 1,250 |
+| **Full scale, Experiment 3** | O, 15,980 steps at batch 4,096 | 36,354 (72%) | **35,261 (70%)** | 28,502 (57%) |
 
-- **Too weak a penalty** leaves codes dense, so no feature lines up with a token.
-- **Too strong a penalty** kills features early: half are dead within 500 steps at $\lambda = 1$.
-- Only a narrow range of $\lambda$ works.
-- **Planned: Experiment 4** (`docs/experiment_4_relu_grid.md`). A grid over $\lambda$ (0.03, 0.1, 0.2, 0.3, 0.5, 1), the learning rate ($\tfrac{1}{4}$, 1 and 4 times the Gao rule) and the batch size (256, 1,024, 4,096): 54 cells, one seed. Recovery is measured along each run at 0.5, 1, 2, 4 and 8 million tokens, so training length is the fourth axis. All other hyperparameters stay fixed. Only large differences between cells will be interpreted. The grid will replace the $\lambda$ sweep above as this section's main table.
+- **Surviving features are almost all correct.** In Experiment 3, 97% of the alive features are recovered tokens, with a median best cosine of 0.99997.
+- **The shortfall is entirely features dying at the drops.** Alive features peak at 50,249 at $k = 128$. About 4,000 die at the drop to $k = 2$, and about 7,000 more (16%) at the drop to $k = 1$. On the subset, too, every schedule loses 15% to 20% at the final drop.
+- **Dead features almost never revive.** Over the 6,400 steps at $k = 2$, the alive count rose by only 244. After the drop to $k = 1$, it rose by 3. The one exception is a large $k$ at the start: $k_0 = 128$ revived all 3,349 features dead at initialisation within 800 steps.
+- **What matters most is the starting $k$.** On the subset, recovery rises with $k_0$ until nearly every feature is alive at the start. The shape of the low end changes it by at most 40 tokens.
+- **The subset predicts full scale well.** Schedule O recovered 75% of the subset and 70% of the full table.
 
-`docs/failure_modes.md` is the running source for this part.
+## Part 2: ReLU SAEs with an L1 penalty
 
-## Part 2: success modes at GPT-2 scale
+### Theory: no zero-loss dictionary, but the embeddings are still the natural target
 
-The full table, $V = 50{,}257$. The Top1 run of Experiment 1 is the baseline: 259 features alive at the end and 16 tokens recovered.
+The loss is $\lvert x - \hat{x}\rvert^2 + \lambda\sum_j f_j$, with codes $f_j \ge 0$ and $\hat{x} = \sum_j f_j d_j$. With $\lambda > 0$, no dictionary reaches zero loss. The embeddings remain the natural target, for two reasons:
 
-| | Experiment 3: $k$-annealing (schedule O) | Experiment 2: L1, $\lambda = 0.3$ |
+- **One-hot codes are the cheapest.** By the triangle inequality, $\sum_j f_j \ge \lvert \hat{x}\rvert$ for unit-norm rows, with equality only if every active row points along $\hat{x}$. So any reconstruction costs the least L1 penalty when it uses a single feature aligned with it.
+- **The embeddings minimise each token's loss.** For one token, the loss over all reconstructions $y$ is at least $\min_y \lvert x - y\rvert^2 + \lambda\lvert y\rvert$. The minimum is at $y$ along $x$ with $\lvert y\rvert = \lvert x\rvert - \lambda/2$, giving $\lambda\lvert x\rvert - \lambda^2/4$. A feature equal to $x/\lvert x\rvert$, with coefficient $\lvert x\rvert - \lambda/2$, attains it. With $m = V$, every token can have its own such feature. Then every token is at its own minimum, so the normalised embeddings minimise the total loss. Experiment 2 shows exactly this shrinkage: the coefficient of a token's feature is its norm minus 0.15, which is $\lambda/2$.
+
+The second argument assumes the encoder can produce exact one-hot codes: each feature must be inactive on every other token. Whether a ReLU encoder can do this for the GPT-2 embeddings is still to be checked (see the next experiments).
+
+### Empirical findings: where recovery happens
+
+On the subset, Experiment 4 maps recovery over $\lambda$ (0.03 to 1), the learning rate (¼ to 4 times the Gao rule) and the batch size (256 to 4,096), at up to 8 million training tokens, with one seed.
+
+| $\lambda$ | Best recovery once converged (of 2,000) | Training needed to converge (steps at the Gao rate) |
 |---|---|---|
-| Training | 15,980 steps at batch 4,096, 10.2 h | 85,100 steps at batch 1,024, 46.6 h |
-| Alive at end | 36,354 (72%) | 49,869 (99%) |
-| Active features per token | 1 | 1.37 |
-| Recovered at cosine > 0.9 | 35,261 (70.2%) | 46,590 (92.7%) |
-| Recovered at cosine > 0.99 | 28,502 (56.7%) | 44,337 (88.2%) |
-| Relative loss | 0.073 | 0.0066 |
+| 0.03 | 1,959 (98%), possibly still rising | 32,000 or more |
+| 0.1 | about 1,890 | about 8,000 |
+| 0.3 | about 1,750 | about 4,000 |
+| 1 | about 1,350 | about 2,000 |
 
-### 2a. Experiment 3: TopK with $k$-annealing, a partial success
+There are three regimes:
 
-- **Schedule O.** $k$ = 128, 64, 32, 16, 8 and 4 share the first 40% of training, then $k = 2$ runs for 40% and $k = 1$ for 20%. The starting $k$ was chosen so that 93% of features are alive at initialisation (see Part 3).
-- **Surviving features are almost all correct.** 35,261 of the 36,354 alive features are recovered tokens (97%), with a median best cosine of 0.99997.
-- **The shortfall is features dying when $k$ drops.** Alive features peak at 50,249 at $k = 128$. About 4,000 die at the drop to $k = 2$, and about 7,000 more (16%) at the drop to $k = 1$.
-- **The subset predicted the outcome.** Schedule O recovered 75% of the subset and 70% of the full table.
+- **Undertrained: dense codes.** At a small $\lambda$, a low learning rate or too few steps, every feature stays alive, but tokens still use many features each. This is a slow success, not a true failure. These runs are on the way to recovery and get there with more steps. An earlier sweep at a fixed 4,000 steps had wrongly classed $\lambda = 0.03$ as a failure for this reason.
+- **Successful.** Across $\lambda$ from 0.03 to 0.5, at learning rates up to the Gao rule, enough training gives over 80% recovery. The best results come from the smallest $\lambda$, at the cost of the longest training.
+- **Over-pressured: dead features.** A large $\lambda$ or a high learning rate kills features early. At 4 times the Gao rate with $\lambda = 1$, only 3 to 7 features survive. These deaths happen in the first half-million tokens, and more training does not undo them.
 
-### 2b. Experiment 2: L1-penalised ReLU, the best result
+Two rules describe the successful region:
 
-- **Result.** 92.7% of tokens recovered at cosine above 0.9, with nearly every feature alive.
-- **Training trajectory.** Codes start dense, with about 25,000 active features per token. They stall near 300 and then sparsify slowly towards one per token. Recovery only appears once codes are nearly one-hot. The run needed about four times its first 10-hour budget, so convergence time is part of the story.
-- **Code structure.** 83% of tokens are coded by exactly one feature. The coefficient of that feature equals the embedding norm minus $\lambda/2$, the L1 shrinkage.
-- **Where it falls short.** The unrecovered 7% lie in crowded regions of the embedding space. There a feature settles between two or three similar tokens, and other features make up the difference.
+- **Training runs on learning rate × steps, not tokens seen.** Runs with the same product reach similar sparsity, whatever their batch size. Adam moves each weight by about the learning rate per step, so a larger batch gives a cleaner gradient but no faster progress.
+- **A weaker penalty recovers more, but needs longer.** A larger $\lambda$ kills more features on the way to one-hot codes, so its final recovery is lower. A smaller $\lambda$ kills fewer, but sparsifies more slowly. This is the ReLU form of the trade-off in Part 1.
+
+At full scale, Experiment 2 ($\lambda = 0.3$, batch 1,024) recovered 46,590 tokens at cosine above 0.9 (93%) and 44,337 above 0.99 (88%). 49,869 features were alive, and there were 1.37 active features per token. It needed 85,100 steps and 47 hours. Codes went from about 25,000 active features per token to 1.37 while only about 400 features died. This gradual sparsification, one token at a time, is the contrast with TopK's abrupt drops. The unrecovered 7% lie in crowded regions of the embedding space, where one feature settles between two or three similar tokens.
 
 ## Part 3: scaling laws
 
-How the hyperparameters that make recovery work must change as the vocabulary grows.
+How the settings that make recovery work must change as the vocabulary grows.
 
 ### 3a. The starting $k$ for TopK
 
-For $k$-annealing, what seems to matter is the share of features alive at initialisation. At the same $k$, that share falls as the vocabulary grows:
+At the same $k$, fewer features are alive at initialisation in a larger vocabulary:
 
 | $k$ | 32 | 64 | 128 | 256 |
 |---|---|---|---|---|
 | Alive at initialisation, $V = 2{,}000$ | 93% | 98% | 99.8% | |
 | Alive at initialisation, $V = 50{,}257$ | 76.7% | 86.5% | 93.3% | 97.3% |
 
-So keeping the same share alive at the start, and with it the same share of recovered tokens, requires $k_0$ to grow with $V$. Here, 93% alive takes $k_0 = 32$ at $V = 2{,}000$ and $k_0 = 128$ at $V = 50{,}257$. Both runs then recovered a similar share of tokens: 68% for B at $V = 2{,}000$ and 70% for O at full scale.
+Keeping the same share alive at the start requires $k_0$ to grow with $V$. Here, 93% alive takes $k_0 = 32$ at $V = 2{,}000$ and $k_0 = 128$ at $V = 50{,}257$. Matched this way, the two runs recovered similar shares: 68% (schedule B on the subset) and 70% (Experiment 3). This rests on two vocabulary sizes so far.
 
-**Needed:** the alive share at initialisation at several vocabulary sizes in between, and annealing runs at a few of them. These would test whether the share at the start predicts recovery at the end, and give the relation between $k_0$ and $V$.
+### 3b. The L1 coefficient and training length for ReLU
 
-### 3b. The L1 coefficient $\lambda$ for ReLU
+Open questions: how does the training needed for a given $\lambda$ grow with $V$, and does the best $\lambda$ change? On the subset, $\lambda = 0.03$ beat 0.3 given enough training. At full scale only $\lambda = 0.3$ has been run, and it already took 47 hours.
 
-Open question: does $\lambda$ also need to change with $V$ to keep the same share of recovered tokens? So far, $\lambda = 0.3$ was best at $V = 2{,}000$ and also worked at full scale, but no other value was tried at full scale.
+## Next experiments
 
-**Needed:** short $\lambda$ sweeps at several vocabulary sizes, scored by recovery. Full-scale runs are slow for L1 (Experiment 2 took 47 hours), so intermediate sizes will carry most of the weight.
+In order of priority:
 
-## Analytic themes
+1. **Alive share at initialisation against $k$ at intermediate vocabulary sizes** (Part 3a). For example $V$ = 5,000, 10,000 and 20,000, plus the two sizes we have. No training is needed, so this takes minutes in the sandbox. It gives the relation between $k_0$ and $V$ for a fixed alive share.
+2. **Annealing runs at two or three intermediate sizes** (Part 3a), with $k_0$ chosen to give the same alive share at the start. This tests whether the alive share at the start predicts recovery at the end. Each run is short compared with Experiment 3.
+3. **ReLU runs at the same intermediate sizes** (Part 3b). These would use a few values of $\lambda$, trained long enough to converge, to measure how training length and the best $\lambda$ change with $V$. The subset grid showed that progress depends on learning rate × steps, so the runs can use a small batch and the Gao rate.
+4. **A check of the ReLU theory** (Part 2). Test whether a ReLU encoder can produce exact one-hot codes for the GPT-2 embeddings, by constructing the encoder from the embeddings and choosing biases. This is a short calculation, not a training run.
+5. **Write-up housekeeping.** Add the Experiment 3 results to its doc and to `docs/failure_modes.md`.
 
-Two themes run through all three parts and are best discussed together.
-
-### The trade-off between sparsity and keeping features alive
-
-Recovery needs both nearly one-hot codes and nearly all features alive. The two pull against each other:
-
-- **Fixed $k$.** A small $k$ gives sparse codes but kills most features. A large $k$ keeps features alive but gives dense codes, and recovery is gone by $k = 16$.
-- **L1 strength.** A weak $\lambda$ keeps every feature alive with dense codes. A strong $\lambda$ gives sparse codes but kills features early.
-- **$k$-annealing.** Each drop in $k$ makes codes sparser and kills features: 15% to 20% at the final drop, on the subset and at full scale.
-- **L1 at full scale handles the trade-off best.** In Experiment 2, active features per token fell from 24 to 1.37 between steps 18,500 and 85,100, and only 371 features died. In Experiment 3, the drops from $k = 4$ to $k = 1$ killed about 11,000.
-
-A plausible reading is that L1 sparsifies gradually, one token at a time, while TopK sparsifies abruptly for all tokens at once.
-
-### Very few features revive
-
-Once a feature dies, it almost never comes back:
-
-- **Experiment 1.** None of the 39,914 features dead at initialisation revived.
-- **Experiment 3.** The 6,400 steps at $k = 2$ revived a net 244 of the roughly 7,000 features lost at the previous drops. After the drop to $k = 1$, the alive count rose by only 3 over the last 2,400 steps.
-- **The exception is a large $k$ at the start.** Experiment 3 revived all 3,349 features dead at initialisation within 800 steps at $k = 128$. Revival happens when $k$ is raised well above what kept a feature dead, not with time.
-
-This is why the starting conditions matter so much, and why the drops in $k$ are where TopK loses.
-
-**Why an auxiliary loss such as AuxK should struggle at $k = 1$.** Noted on 2026-10-20, before testing. AuxK (Gao et al., 2024) gives dead features a gradient by training them to reconstruct the residual $e = x - \hat{x}$, the part of each token the live features miss. To revive, though, a dead feature must win the main selection: at $k = 1$, its pre-activation on the whole token must exceed the incumbent's. Take a token whose own feature has died and which a neighbour's feature now codes at cosine $\cos\theta$. The residual is the part of the token orthogonal to that feature, of size $\lvert x\rvert \sin\theta$. A dead feature aligned with the residual therefore scores about $\lvert x\rvert \sin\theta$ on the token, against $\lvert x\rvert \cos\theta$ for the incumbent. At $\cos\theta = 0.9$, that is $0.44\lvert x\rvert$ against $0.9\lvert x\rvert$, so the dead feature loses. At larger $k$ the bar is lower, because a feature only has to beat the $k$-th largest pre-activation. So AuxK should help most while $k \ge 2$, before the drops, and little once $k = 1$.
-
-**What the subset pilots showed (2026-10-20).** The prediction for $k = 1$ held, but AuxK did not help before the drops either. On the subset almost no features are dead before a drop, so there is nothing to rescue. Features die at the drop. Afterwards, standard AuxK revived only about 12 features over the whole $k = 2$ stage, because even at $k = 2$ a dead feature must beat the second-largest pre-activation. Targeting the whole token instead of the residual at $k = 1$ (variant B) revived a few more, about 2 per 100 steps. These pilots are direct evidence for this theme: even a loss designed to revive dead features brings back only a handful once $k$ is small. Full-scale AuxK runs were judged not worth their cost. The figures above are net changes in the alive count. Counting features that die and later revive would need per-feature activity at each evaluation, which the saved snapshots allow.
+One optional item is a TopK check of learning rate and batch size, mirroring the ReLU grid. It would show whether TopK's failures are also partly undertraining. I'd leave it out unless a reader is likely to ask, because the TopK losses happen at the drops in $k$, which more training at $k = 1$ cannot reverse.
