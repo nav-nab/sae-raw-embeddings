@@ -17,8 +17,15 @@ With a dictionary of $m = V$ features trained on the raw token embedding table, 
 
 **What "the Gao rule" means.** Checked against the paper on 2026-10-26. Gao et al. (2024, "Scaling and evaluating sparse autoencoders", Section 3.1.2) report that the largest learning rate that converges for their TopK SAEs scales as $1/\sqrt{n}$, where $n$ is the number of latents. They choose learning rates by sweeping at small scales and extrapolating that trend. They do not state a constant: the values $2\times10^{-4}$ and $2^{14}$ do not appear in the paper or its appendices. The constant is our own choice of normalisation. It matches the rule built into the EleutherAI `sparsify` library, which follows Gao et al.'s recipe, though its exact formula was not checked here. The write-up should therefore say that the learning rate scales as $1/\sqrt{m}$ following Gao et al., and that we normalise it to $2\times10^{-4}$ at $m = 2^{14}$. It should not say that Gao et al. give this value. Two further caveats: the scaling was derived for TopK SAEs on language-model activations, and we also use it for ReLU SAEs on the embedding table.
 - **Recovery.** A token is recovered if some decoder row is its mutual nearest neighbour at cosine above 0.9 (and, more strictly, above 0.99).
+- **Outcome colours in the run tables.** 🟢 success: at least 90% of tokens recovered at cosine above 0.9. 🟡 partial success: 50% to 90%. 🔴 failure: under 50%. Runs carry tags (T1, T2, … for TopK; R1, R2, … for ReLU) so the text can refer to them.
 
 ## Part 1: TopK SAEs
+
+We trained TopK SAEs in three regimes:
+
+1. **Fixed $k$**, either $k = 1$ (Top1) or a larger fixed $k$.
+2. **$k$-annealing**: $k$ starts large and is lowered in stages to 1 during training.
+3. **$k$-annealing with AuxK**: as regime 2, with the auxiliary loss of Gao et al. (2024) to revive dead features.
 
 ### Theory: the zero-loss dictionary
 
@@ -32,38 +39,47 @@ A TopK feature receives gradient only on tokens where it is among the top $k$. T
 - **A large $k$** keeps features alive, but every token then uses all $k$ slots. No feature has to line up with a single token.
 - **$k$-annealing** tries to get both, by starting with a large $k$ and lowering it to 1. Each drop in $k$ is a sudden increase in sparsity for every token at once, and each one kills features.
 
+### Results
+
+Subset runs have $V = m = 2{,}000$ and 4,000 steps at batch size 512, unless marked. Every annealed run ends at $k = 1$. The "long $k = 2$ stage" schedules halve $k$ from $k_0$ down to 4 in equal stages over the first 40% of training, then hold $k = 2$ for 40% and $k = 1$ for the last 20%. The "halving" schedules halve $k$ from $k_0$ in equal stages and reach $k = 1$ at 80% of training.
+
+| # | Outcome | Run | Scale and training | Active features per token at end | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
+|---|---|---|---|---|---|---|---|
+| | | **Fixed $k$** | | | | | |
+| T1 | 🔴 | Top1 (Experiment 1) | Full table, 16,820 steps at batch 4,096 | 1 | 259 | 16 (0.03%) | 6 |
+| T2 | 🔴 | Top1 | Subset | 1 | 382 | 227 (11%) | 113 |
+| T3 | 🔴 | Fixed $k$ = 2, 4, 8, 16, 32 | Subset, 3,000 steps | $k$ | 558 to 1,778 | 162, 73, 7, 0, 0 | 13, 0, 0, 0, 0 |
+| | | **$k$-annealing** | | | | | |
+| T4 | 🔴 | 2 for 80%, then 1 | Subset | 1 | 545 | 295 (15%) | 136 |
+| T5 | 🔴 | 4 for 20%, 2 for 60%, then 1 | Subset | 1 | 750 | 506 (25%) | 250 |
+| T6 | 🔴 | Halving from $k_0 = 8$ | Subset | 1 | 1,025 | 851 (43%) | 530 |
+| T7 | 🟡 | Halving from $k_0 = 16$ | Subset | 1 | 1,265 | 1,171 (59%) | 849 |
+| T8 | 🟡 | Halving from $k_0 = 32$ | Subset | 1 | 1,414 | 1,362 (68%) | 1,068 |
+| T9 | 🟡 | Long $k = 2$ stage from $k_0 = 64$ | Subset | 1 | 1,532 | 1,501 (75%) | 1,267 |
+| T10 | 🟡 | Long $k = 2$ stage from $k_0 = 128$ | Subset | 1 | 1,523 | 1,499 (75%) | 1,250 |
+| T11 | 🟡 | Long $k = 2$ stage from $k_0 = 128$ (Experiment 3) | Full table, 15,980 steps at batch 4,096 | 1 | 36,354 | **35,261 (70%)** | 28,502 (57%) |
+| | | **$k$-annealing with AuxK** (as T10) | | | | | |
+| T12 | 🟡 | Standard AuxK, weight $\alpha$ = 1/32, 1/8 | Subset | 1 | 1,507; 1,516 | 1,476; 1,478 | 1,229; 1,235 |
+| T13 | 🟡 | AuxK targeting the whole token at $k = 1$, $\alpha$ = 1/32, 1/8, 1/2 | Subset | 1 | 1,525; 1,555; 1,555 | 1,503; 1,542; 1,538 | 1,258; 1,304; 1,302 |
+
+In every TopK run, every token uses exactly $k$ features at the end: no token has a zero code, and the fixed-$k$ runs fill all $k$ slots. So the mean, the median and the whole range are $k$, and there is no spread to report.
+
+No TopK run reaches 90%.
+
 ### 1a. Failure modes
 
-Subset runs ($V = m = 2{,}000$), 4,000 steps at batch size 512 unless marked. Recovered counts are out of 2,000.
+- **Top1 fails (T1, T2)** because most features are dead at initialisation and never revive. At full scale, none of the 39,914 features dead at initialisation revived.
+- **Fixed $k > 1$ fails (T3)** in the opposite way. Features stay alive, but codes use all $k$ slots, and recovery is gone by $k = 16$.
+- **Annealing from a small $k_0$ fails (T4 to T6)** because too few features are alive at the start.
+- **An auxiliary loss does not rescue the dead features (T12, T13).** AuxK trains dead features to reconstruct the residual. An argument predicts this should fail at $k = 1$. A dead feature aligned with the residual of a token coded at cosine $\cos\theta$ scores about $\lvert x\rvert\sin\theta$ on that token, against $\lvert x\rvert\cos\theta$ for the incumbent: at $\cos\theta = 0.9$, $0.44\lvert x\rvert$ against $0.9\lvert x\rvert$. Standard AuxK gave slightly fewer tokens than T10 without it (1,476 and 1,478, against 1,499). The whole-token variant gave up to 43 more (1,542). All runs used one seed, so we cannot tell whether a difference of this size is real. For comparison, near-identical schedules in the subset grid differ by up to about 40 tokens. Even before the final drop, AuxK could not help much, because features die *at* the drops, not between them.
 
-| Test | Active features per token at end | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
-|---|---|---|---|---|
-| Top1 | 1 | 382 | 227 | 113 |
-| Fixed $k$ = 2, 4, 8, 16, 32 (3,000 steps) | $k$ | 558 to 1,778 | 162, 73, 7, 0, 0 | 13, 0, 0, 0, 0 |
-| Annealing with a low start: $2 \to 1$; $4 \to 2 \to 1$ | 1 | 545; 750 | 295; 506 | 136; 250 |
-| Annealing from $k_0$ = 8, 16 (halving, $k = 1$ at 80%) | 1 | 1,025; 1,265 | 851; 1,171 | 530; 849 |
+### 1b. Partial successes: annealing from a large $k$
 
-In every TopK run, every token uses exactly $k$ features at the end: no token has a zero code, and the fixed-$k$ runs fill all $k$ slots. So the mean, the median and the whole range are $k$, and there is no spread to report. The annealed runs end at $k = 1$.
-
-- **Top1 fails** because most features are dead at initialisation and never revive. At full scale (Experiment 1), none of the 39,914 features dead at initialisation revived, 259 features were alive at the end, and 16 tokens were recovered.
-- **Fixed $k > 1$ fails** in the opposite way. Features stay alive, but codes use all $k$ slots, and recovery is gone by $k = 16$.
-- **Annealing from a small $k_0$ fails** because too few features are alive at the start.
-- **An auxiliary loss does not rescue the dead features.** AuxK (Gao et al., 2024) trains dead features to reconstruct the residual. An argument predicts this should fail at $k = 1$. A dead feature aligned with the residual of a token coded at cosine $\cos\theta$ scores about $\lvert x\rvert\sin\theta$ on that token, against $\lvert x\rvert\cos\theta$ for the incumbent: at $\cos\theta = 0.9$, $0.44\lvert x\rvert$ against $0.9\lvert x\rvert$. On the subset with schedule O, standard AuxK gave nothing (1,476 and 1,478 recovered, against 1,499 without it). A variant that targets the whole token at $k = 1$ gave about 40 more tokens, which is close to the noise. Even before the drops it could not help, because features die *at* the drops.
-
-### 1b. Successes: annealing from a large $k$
-
-| Run | Schedule | Active features per token at end | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
-|---|---|---|---|---|---|
-| Subset, B | Halving from 32, $k = 1$ at 80% | 1 | 1,414 | 1,362 (68%) | 1,068 |
-| Subset, N | 64, 32, 16, 8, 4 at 8% each; 2 for 40%; 1 for 20% | 1 | 1,532 | 1,501 (75%) | 1,267 |
-| Subset, O | As N, starting at 128 | 1 | 1,523 | 1,499 (75%) | 1,250 |
-| **Full scale, Experiment 3** | O, 15,980 steps at batch 4,096 | 1 | 36,354 (72%) | **35,261 (70%)** | 28,502 (57%) |
-
-- **Surviving features are almost all correct.** In Experiment 3, 97% of the alive features are recovered tokens, with a median best cosine of 0.99997.
+- **Surviving features are almost all correct.** In Experiment 3 (T11), 97% of the alive features are recovered tokens, with a median best cosine of 0.99997.
 - **The shortfall is entirely features dying at the drops.** Alive features peak at 50,249 at $k = 128$. About 4,000 die at the drop to $k = 2$, and about 7,000 more (16%) at the drop to $k = 1$. On the subset, too, every schedule loses 15% to 20% at the final drop.
 - **Dead features almost never revive.** Over the 6,400 steps at $k = 2$, the alive count rose by only 244. After the drop to $k = 1$, it rose by 3. The one exception is a large $k$ at the start: $k_0 = 128$ revived all 3,349 features dead at initialisation within 800 steps.
-- **What matters most is the starting $k$.** On the subset, recovery rises with $k_0$ until nearly every feature is alive at the start. The shape of the low end changes it by at most 40 tokens.
-- **The subset predicts full scale well.** Schedule O recovered 75% of the subset and 70% of the full table.
+- **What matters most is the starting $k$ (T6 to T10).** On the subset, recovery rises with $k_0$ until nearly every feature is alive at the start. The shape of the low end changes it by at most about 40 tokens.
+- **The subset predicts full scale well.** The same schedule recovered 75% of the subset (T10) and 70% of the full table (T11).
 
 ## Part 2: ReLU SAEs with an L1 penalty
 
@@ -92,22 +108,25 @@ So the unrecovered 7% are not tokens that a ReLU encoder cannot isolate. They ar
 
 On the subset, Experiment 4 maps recovery over $\lambda$ (0.03 to 1), the learning rate (¼ to 4 times the Gao rule) and the batch size (256 to 4,096), at up to 8 million training tokens, with one seed.
 
-| $\lambda$ | Best cell (learning rate, batch size) | Best recovery once converged (of 2,000) | Training needed to converge (steps at the Gao rate) |
-|---|---|---|---|
-| 0.03 | 1, 256 | 1,959 (98%), possibly still rising | 32,000 or more |
-| 0.1 | 1, 1,024 | 1,899 | about 8,000 |
-| 0.3 | 1, 256 | 1,753 | about 4,000 |
-| 1 | ¼, 256 | 1,346 | about 2,000 |
+| # | Outcome | $\lambda$ | Scale and training | Best cell (learning rate × Gao rate, batch size) | Recovered > 0.9 | Training needed to converge (steps at the Gao rate) |
+|---|---|---|---|---|---|---|
+| R1 | 🟢 | 0.03 | Subset, 8 million tokens | 1, 256 | 1,959 (98%), possibly still rising | 32,000 or more |
+| R2 | 🟢 | 0.1 | Subset, 8 million tokens | 1, 1,024 | 1,899 (95%) | about 8,000 |
+| R3 | 🟡 | 0.3 | Subset, 8 million tokens | 1, 256 | 1,753 (88%) | about 4,000 |
+| R4 | 🟡 | 1 | Subset, 8 million tokens | ¼, 256 | 1,346 (67%) | about 2,000 |
+| R5 | 🟢 | 0.3 (Experiment 2) | Full table, 85,100 steps at batch 1,024 | 1, 1,024 | **46,590 (93%)** | 85,100 run; convergence not measured |
+
+The failing cells of the grid are not listed here. They are the two failure modes described below: too little training, and too much pressure.
 
 Unlike TopK, a ReLU SAE lets each token use any number of features, so the codes have a spread. Active features per token, in the best cells above and in Experiment 2 at full scale:
 
-| Run | Mean | Median | Share of tokens using 1 | 2 | 3 | 4 or more | Most used by any token |
-|---|---|---|---|---|---|---|---|
-| $\lambda = 0.03$ | 1.16 | 1 | 90.1% | 5.9% | 2.7% | 1.4% | 6 |
-| $\lambda = 0.1$ | 1.27 | 1 | 88.5% | 5.0% | 2.1% | 4.5% | 10 |
-| $\lambda = 0.3$ | 1.35 | 1 | 78.4% | 13.1% | 5.0% | 3.6% | 6 |
-| $\lambda = 1$ | 1.36 | 1 | 68.1% | 28.2% | 3.3% | 0.5% | 5 |
-| Experiment 2 (full table, $\lambda = 0.3$) | 1.37 | 1 | 83.2% | 8.3% | 3.0% | 5.4% | 11 |
+| # | Outcome | $\lambda$ | Mean | Median | Share of tokens using 1 | 2 | 3 | 4 or more | Most used by any token |
+|---|---|---|---|---|---|---|---|---|---|
+| R1 | 🟢 | 0.03 | 1.16 | 1 | 90.1% | 5.9% | 2.7% | 1.4% | 6 |
+| R2 | 🟢 | 0.1 | 1.27 | 1 | 88.5% | 5.0% | 2.1% | 4.5% | 10 |
+| R3 | 🟡 | 0.3 | 1.35 | 1 | 78.4% | 13.1% | 5.0% | 3.6% | 6 |
+| R4 | 🟡 | 1 | 1.36 | 1 | 68.1% | 28.2% | 3.3% | 0.5% | 5 |
+| R5 | 🟢 | 0.3 (Experiment 2, full table) | 1.37 | 1 | 83.2% | 8.3% | 3.0% | 5.4% | 11 |
 
 Every token uses at least one feature. A weaker penalty leaves more tokens on a single feature. At $\lambda = 1$, codes are as sparse on average, but more tokens share two features, since fewer features are alive.
 
@@ -128,7 +147,7 @@ Two rules describe the successful region:
 - **Training runs on learning rate × steps, not tokens seen.** Runs with the same product reach similar sparsity, whatever their batch size. Adam moves each weight by about the learning rate per step, so a larger batch gives a cleaner gradient but no faster progress.
 - **A weaker penalty recovers more, but needs longer.** A larger $\lambda$ kills more features on the way to one-hot codes, so its final recovery is lower. A smaller $\lambda$ kills fewer, but sparsifies more slowly. This is the ReLU form of the trade-off in Part 1.
 
-At full scale, Experiment 2 ($\lambda = 0.3$, batch 1,024) recovered 46,590 tokens at cosine above 0.9 (93%) and 44,337 above 0.99 (88%). 49,869 features were alive, and tokens used 1.37 active features on average (median 1, at most 11; 83% used exactly one). It needed 85,100 steps and 47 hours. Codes went from about 25,000 active features per token to 1.37 while only about 400 features died. This gradual sparsification, one token at a time, is the contrast with TopK's abrupt drops. The unrecovered 7% lie in crowded regions of the embedding space, where one feature settles between two or three similar tokens. Experiment 6 makes this precise: these are tokens a ReLU feature can isolate only through a narrow gap (see the margin table under Theory above).
+At full scale, Experiment 2 (R5: $\lambda = 0.3$, batch 1,024) recovered 46,590 tokens at cosine above 0.9 (93%) and 44,337 above 0.99 (88%). 49,869 features were alive, and tokens used 1.37 active features on average (median 1, at most 11; 83% used exactly one). It needed 85,100 steps and 47 hours. Codes went from about 25,000 active features per token to 1.37 while only about 400 features died. This gradual sparsification, one token at a time, is the contrast with TopK's abrupt drops. The unrecovered 7% lie in crowded regions of the embedding space, where one feature settles between two or three similar tokens. Experiment 6 makes this precise: these are tokens a ReLU feature can isolate only through a narrow gap (see the margin table under Theory above).
 
 ## Part 3: scaling laws
 
@@ -157,7 +176,7 @@ The shape of this growth depends on which tokens make up each subvocabulary:
 
 Details are in `docs/experiment_5_alive_at_init.md`.
 
-At the two sizes trained so far, starting runs this way gave similar recovery: 68% (schedule B on the subset, $k_0 = 32$) and 70% (Experiment 3, $k_0 = 128$). Whether this holds at the sizes in between is the next experiment.
+At the two sizes trained so far, starting runs this way gave similar recovery: 68% on the subset with $k_0 = 32$ (T8) and 70% on the full table with $k_0 = 128$ (T11). Whether this holds at the sizes in between is the next experiment.
 
 ### 3b. The L1 coefficient and training length for ReLU
 
