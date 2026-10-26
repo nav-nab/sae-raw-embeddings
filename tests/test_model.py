@@ -212,3 +212,18 @@ def test_build_model_needs_k_for_topk():
     with pytest.raises(ValueError):
         build_model("topk", 8, 20)
     assert build_model("topk", 8, 20, k=4).k == 4
+
+
+def test_alive_at_init_counts_match_full_pass():
+    import importlib.util
+    from pathlib import Path
+    from sae_raw.evaluation import full_pass
+    path = Path(__file__).resolve().parents[1] / "experiments" / "exp5_alive_at_init" / "run.py"
+    spec = importlib.util.spec_from_file_location("exp5", path)
+    exp5 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exp5)
+    E = torch.randn(300, 16) + 0.5  # a shared mean component, as in the real table
+    counts = exp5.alive_counts(E, seed=3, ks=[1, 2, 4, 8], chunk=64)
+    for k in (1, 2, 4, 8):
+        model = build_model("topk", 16, 300, seed=3, k=k)
+        assert counts[k] == int(full_pass(model, E)[2].sum())

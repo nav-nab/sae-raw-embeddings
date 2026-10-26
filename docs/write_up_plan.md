@@ -103,14 +103,21 @@ How the settings that make recovery work must change as the vocabulary grows.
 
 ### 3a. The starting $k$ for TopK
 
-At the same $k$, fewer features are alive at initialisation in a larger vocabulary:
+At the same $k$, fewer features are alive at initialisation in a larger vocabulary. Experiment 5 (`docs/experiment_5_alive_at_init.md`) measured the share at seven sizes, as the mean of two seeds, which differ by at most 2 percentage points:
 
-| $k$ | 32 | 64 | 128 | 256 |
-|---|---|---|---|---|
-| Alive at initialisation, $V = 2{,}000$ | 93% | 98% | 99.8% | |
-| Alive at initialisation, $V = 50{,}257$ | 76.7% | 86.5% | 93.3% | 97.3% |
+| $V$ | $k$ = 1 | 8 | 32 | 64 | 128 | 256 |
+|---|---|---|---|---|---|---|
+| 2,000 | 31% | 72% | 93% | 98% | 99.8% | 100% |
+| 5,000 | 29% | 68% | 90% | 96% | 98.9% | 99.8% |
+| 10,000 | 26% | 65% | 88% | 95% | 98.1% | 99.6% |
+| 20,000 | 25% | 60% | 84% | 92% | 96.9% | 99.1% |
+| 30,000 | 23% | 57% | 81% | 90% | 95.7% | 98.5% |
+| 40,000 | 22% | 54% | 79% | 88% | 94.5% | 97.9% |
+| 50,257 | 21% | 52% | 77% | 87% | 93.4% | 97.3% |
 
-Keeping the same share alive at the start requires $k_0$ to grow with $V$. Here, 93% alive takes $k_0 = 32$ at $V = 2{,}000$ and $k_0 = 128$ at $V = 50{,}257$. Matched this way, the two runs recovered similar shares: 68% (schedule B on the subset) and 70% (Experiment 3). This rests on two vocabulary sizes so far.
+Keeping the same share alive at the start therefore requires $k_0$ to grow with $V$. For 93% alive, the $k$ needed is about 31, 45, 55, 73, 92, 108 and 123 across these sizes. These values are interpolated between the measured powers of two. That is roughly fourfold growth in $k$ for 25-fold growth in $V$, close to $k \propto V^{0.43}$ overall, though the growth speeds up at larger $V$. One confound: larger subvocabularies also add rarer tokens.
+
+At the two sizes trained so far, starting runs this way gave similar recovery: 68% (schedule B on the subset, $k_0 = 32$) and 70% (Experiment 3, $k_0 = 128$). Whether this holds at the sizes in between is the next experiment.
 
 ### 3b. The L1 coefficient and training length for ReLU
 
@@ -120,7 +127,7 @@ Open questions: how does the training needed for a given $\lambda$ grow with $V$
 
 In order of priority:
 
-1. **Alive share at initialisation against $k$ at intermediate vocabulary sizes** (Part 3a). For example $V$ = 5,000, 10,000 and 20,000, plus the two sizes we have. No training is needed, so this takes minutes in the sandbox. It gives the relation between $k_0$ and $V$ for a fixed alive share.
+1. ~~**Alive share at initialisation against $k$ at intermediate vocabulary sizes**~~ **Done (Experiment 5, 2026-10-26).** Sizes 2,000 to 50,257, $k$ from 1 to 256, two seeds. Results in Part 3a.
 2. **Annealing runs at two or three intermediate sizes** (Part 3a), with $k_0$ chosen to give the same alive share at the start. This tests whether the alive share at the start predicts recovery at the end. Each run is short compared with Experiment 3.
 3. **ReLU runs at the same intermediate sizes** (Part 3b). These would use a few values of $\lambda$, trained long enough to converge, to measure how training length and the best $\lambda$ change with $V$. The subset grid showed that progress depends on learning rate × steps, so the runs can use a small batch and the Gao rate.
 4. **A check of the ReLU theory** (Part 2). Test whether a ReLU encoder can produce exact one-hot codes for the GPT-2 embeddings, by constructing the encoder from the embeddings and choosing biases. This is a short calculation, not a training run.
