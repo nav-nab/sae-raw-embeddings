@@ -1,5 +1,10 @@
 """Grid searches on a subvocabulary: one short training run per combination of settings.
 
+A cell is a dict with a name, a batch size and a learning rate factor (a
+multiple of the Gao rule). An L1 ReLU cell (Experiment 4) has an l1_coef and
+trains to the grid's token count. A TopK cell (Experiment 7) has model "topk",
+a k schedule (as for k_schedule) and its own steps and eval_every.
+
 run_grid() runs every cell of a grid in turn, each in its own folder under the
 grid directory, with the resumable train() loop. One command runs the whole
 grid:
@@ -33,7 +38,7 @@ from pathlib import Path
 
 from sae_raw import data
 from sae_raw.evaluation import recovery_fields
-from sae_raw.run import setup_logging, time_training
+from sae_raw.run import mean_step_seconds, schedule_ks, setup_logging, time_training
 from sae_raw.train import (CHECKPOINT_FILE, INIT_FILE, default_lr, fmt_duration, train)
 
 TOKEN_UNIT = 2 ** 20  # one "million" tokens
@@ -43,6 +48,9 @@ SUMMARY_FILE = "summary.csv"
 SUMMARY_FIELDS = ("cell", "l1_coef", "lr_factor", "lr", "batch_size", "tokens_m", "step",
                   "n_alive", "mean_l0", "rel_loss", "n_recovered_cos0.9",
                   "n_recovered_cos0.99")
+TOPK_SUMMARY_FIELDS = ("cell", "lr_factor", "lr", "batch_size", "steps", "step", "k",
+                       "n_alive", "n_top1", "mean_l0", "rel_loss", "n_recovered_cos0.9",
+                       "n_recovered_cos0.99")
 
 
 def make_cells(l1_coefs, lr_factors, batch_sizes):
@@ -54,9 +62,15 @@ def make_cells(l1_coefs, lr_factors, batch_sizes):
     return cells
 
 
+def is_topk(cell):
+    return cell.get("model", "l1") == "topk"
+
+
 def cell_steps(cell, max_tokens_m, eval_tokens_m):
-    """(steps, eval_every) for a cell: training to max_tokens_m million tokens, with an
-    evaluation every eval_tokens_m million tokens."""
+    """(steps, eval_every) for a cell: its own for a TopK cell; otherwise training to
+    max_tokens_m million tokens, with an evaluation every eval_tokens_m million tokens."""
+    if is_topk(cell):
+        return cell["steps"], cell["eval_every"]
     b = cell["batch_size"]
     steps = int(max_tokens_m * TOKEN_UNIT) // b
     every = int(eval_tokens_m * TOKEN_UNIT) // b
@@ -68,8 +82,13 @@ def cell_steps(cell, max_tokens_m, eval_tokens_m):
 def estimate_seconds(cell, grid):
     """Expected time for one cell, from the timings measured at the start of the grid."""
     steps, every = cell_steps(cell, grid["max_tokens_m"], grid["eval_tokens_m"])
-    return steps * grid["step_seconds"][str(cell["batch_size"])] + \
-        (steps // every + 1) * grid["eval_seconds"]
+    b = str(cell["batch_size"])
+    if is_topk(cell):
+        by_k = {int(k): s for k, s in grid["step_seconds_by_k"][b].items()}
+        step_s = mean_step_seconds(by_k, cell["schedule"])
+    else:
+        step_s = grid["step_seconds"][b]
+    return steps * step_s + (steps // every + 1) * grid["eval_seconds"]
 
 
 def _parser(description, default_dir):
@@ -90,8 +109,11 @@ def _parser(description, default_dir):
     return p
 
 
-def run_grid(name, description, default_dir, cells, argv=None):
-    """Run every cell of an L1 ReLU grid (see the module docstring)."""
+def run_grid(name, description, default_dir, cells, argv=None, eval_extra=recovery_fields):
+    """Run every cell of a grid (see the module docstring).
+
+    eval_extra(model, E) adds fields to every evaluation; by default decoder recovery.
+    """
     args = _parser(description, default_dir).parse_args(argv)
     grid_dir = Path(args.grid_dir)
     log = setup_logging(grid_dir)
@@ -122,14 +144,27 @@ def run_grid(name, description, default_dir, cells, argv=None):
         for cell in cells:
             cell_steps(cell, args.max_tokens_m, args.eval_tokens_m)  # check the token counts
         log(f"Timing steps on {V:,} tokens ...")
-        grid["step_seconds"] = {}
+        grid["step_seconds"], grid["step_seconds_by_k"] = {}, {}
         eval_s = None
-        for b in sorted({c["batch_size"] for c in cells}):
-            step_s, ev = time_training(E, b, model="l1", l1_coef=cells[0]["l1_coef"],
+        for b in sorted({c["batch_size"] for c in cells if not is_topk(c)}):
+            l1 = next(c["l1_coef"] for c in cells if not is_topk(c))
+            step_s, ev = time_training(E, b, model="l1", l1_coef=l1,
                                        device=args.device, evaluate=eval_s is None)
             eval_s = ev if ev is not None else eval_s
             grid["step_seconds"][str(b)] = round(step_s, 4)
             log(f"  batch size {b}: {step_s:.3f} s per step")
+        for b in sorted({c["batch_size"] for c in cells if is_topk(c)}):
+            ks = sorted({k for c in cells if is_topk(c) and c["batch_size"] == b
+                         for k in schedule_ks(c["schedule"])}, reverse=True)
+            grid["step_seconds_by_k"][str(b)] = {}
+            for k in ks:
+                step_s, ev = time_training(E, b, model="topk", k=k, device=args.device,
+                                           evaluate=eval_s is None)
+                eval_s = ev if ev is not None else eval_s
+                grid["step_seconds_by_k"][str(b)][str(k)] = round(step_s, 4)
+            log(f"  batch size {b}, TopK: " + ", ".join(
+                f"k={k} {s:.3f} s" for k, s in grid["step_seconds_by_k"][str(b)].items())
+                + " per step")
         grid["eval_seconds"] = round(eval_s, 2)
         grid_dir.mkdir(parents=True, exist_ok=True)
         grid_path.write_text(json.dumps(grid, indent=2))
@@ -138,7 +173,9 @@ def run_grid(name, description, default_dir, cells, argv=None):
     done = lambda c: (grid_dir / c["name"] / RESULT_FILE).exists()
     total = sum(estimate_seconds(c, grid) for c in cells)
     left = sum(estimate_seconds(c, grid) for c in cells if not done(c))
-    log(f"{len(cells)} cells, each to {grid['max_tokens_m']:g} million tokens; "
+    length = ("each with its own number of steps" if all(map(is_topk, cells))
+              else f"each to {grid['max_tokens_m']:g} million tokens")
+    log(f"{len(cells)} cells, {length}; "
         f"{sum(map(done, cells))} already done. Expected time: {fmt_duration(total)} "
         f"for the whole grid, {fmt_duration(left)} still to run.")
 
@@ -150,15 +187,18 @@ def run_grid(name, description, default_dir, cells, argv=None):
         lr = grid["base_lr"] * cell["lr_factor"]
         later = sum(estimate_seconds(c, grid) for c in cells[i:] if not done(c))
         prefix = f"[{i}/{len(cells)} {cell['name']}] "
-        log(f"{prefix}lambda {cell['l1_coef']:g}, learning rate {lr:.3g} "
+        what = "TopK, k annealed" if is_topk(cell) else f"lambda {cell['l1_coef']:g}"
+        log(f"{prefix}{what}, learning rate {lr:.3g} "
             f"({cell['lr_factor']:g} x the Gao rule), batch size {cell['batch_size']}: "
             f"{steps:,} steps, evaluation every {every:,}.")
+        model_kw = ({"model": "topk", "schedule": cell["schedule"]} if is_topk(cell)
+                    else {"model": "l1", "l1_coef": cell["l1_coef"]})
         _, history, finished = train(
             E, steps=steps, batch_size=cell["batch_size"], lr=lr, seed=grid["seed"],
-            eval_every=every, model="l1", l1_coef=cell["l1_coef"], device=grid["device"],
+            eval_every=every, device=grid["device"],
             run_dir=cell_dir, checkpoint_every=60 * grid["checkpoint_minutes"],
             heartbeat_every=grid["heartbeat_seconds"], extra_eta_seconds=later,
-            eval_extra=recovery_fields, log=lambda msg: log(prefix + msg))
+            eval_extra=eval_extra, log=lambda msg: log(prefix + msg), **model_kw)
         if not finished:
             log("Stopped early. Run the same command again to resume.")
             return None
@@ -173,18 +213,25 @@ def run_grid(name, description, default_dir, cells, argv=None):
             f"alive, {last['mean_l0']:.3g} active per token.")
 
     _write_summary(grid_dir, cells)
-    log(f"Grid finished. Summary in {grid_dir / SUMMARY_FILE}. "
-        f"At {grid['max_tokens_m']:g} million tokens:")
+    log(f"Grid finished. Summary in {grid_dir / SUMMARY_FILE}. At the end of each cell:")
     for cell in cells:
         last = json.loads((grid_dir / cell["name"] / RESULT_FILE).read_text())[-1]
-        log(f"  {cell['name']:>22}: recovered {last['n_recovered_cos0.9']:>5,} (> 0.9), "
+        log(f"  {cell['name']:>24}: recovered {last['n_recovered_cos0.9']:>5,} (> 0.9), "
             f"{last['n_recovered_cos0.99']:>5,} (> 0.99); alive {last['n_alive']:>5,}; "
             f"active per token {last['mean_l0']:.3g}")
     return grid
 
 
 def _cell_rows(cell, lr, history, grid):
-    """One summary row per evaluation at a doubling of the token count (and at the end)."""
+    """Summary rows of a finished cell.
+
+    A TopK cell gets one row per evaluation. An L1 cell gets one per evaluation at a
+    doubling of the token count, and one at the end.
+    """
+    if is_topk(cell):
+        return [{"cell": cell["name"], "lr_factor": cell["lr_factor"], "lr": lr,
+                 "batch_size": cell["batch_size"], "steps": cell["steps"],
+                 **{k: rec.get(k) for k in TOPK_SUMMARY_FIELDS[5:]}} for rec in history]
     rows = []
     for rec in history:
         tokens_m = rec["step"] * cell["batch_size"] / TOKEN_UNIT
@@ -210,7 +257,8 @@ def _write_summary(grid_dir, cells):
         path = grid_dir / cell["name"] / RESULT_FILE
         if path.exists():
             rows.extend(json.loads(path.read_text()))
+    fields = TOPK_SUMMARY_FIELDS if any(map(is_topk, cells)) else SUMMARY_FIELDS
     with open(grid_dir / SUMMARY_FILE, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=SUMMARY_FIELDS)
+        writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)

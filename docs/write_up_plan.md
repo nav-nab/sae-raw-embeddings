@@ -191,6 +191,7 @@ In order of priority:
 3. **ReLU runs at the same intermediate sizes** (Part 3b). These would use a few values of $\lambda$, trained long enough to converge, to measure how training length and the best $\lambda$ change with $V$. The subset grid showed that progress depends on learning rate × steps, so the runs can use a small batch and the Gao rate.
 4. ~~**A check of the ReLU theory** (Part 2).~~ **Done (Experiment 6, 2026-10-26).** Every GPT-2 embedding is a vertex of the convex hull, so exact one-hot codes exist. Results at the end of Appendix B.
 5. ~~**Write-up housekeeping.**~~ **Done (2026-10-26).** The Experiment 3 results and the AuxK pilots are in its doc and in `docs/failure_modes.md`.
+6. **TopK with more training and other learning rates (Experiment 7, `docs/experiment_7_topk_lr_steps.md`).** The best subset schedule (T10) at 2 and 4 times the steps, and at half and twice the learning rate. Tests whether learning rate × steps, the main lever for ReLU, reduces the features TopK loses at the drop to $k = 1$. Script ready; to be run on the laptop.
 
 One optional item is a TopK check of learning rate and batch size, mirroring the ReLU grid. It would show whether TopK's failures are also partly undertraining. I'd leave it out unless a reader is likely to ask, because the TopK losses happen at the drops in $k$, which more training at $k = 1$ cannot reverse.
 

@@ -54,3 +54,30 @@ def test_grid_script_end_to_end_and_resume(tmp_path):
     # Running again skips every finished cell.
     r = subprocess.run(args, capture_output=True, text=True, cwd=REPO, timeout=300)
     assert r.returncode == 0 and "4 already done" in r.stdout
+
+
+def test_topk_grid_end_to_end(tmp_path):
+    _fake_data(tmp_path / "data")
+    script = tmp_path / "topk_grid.py"
+    exp7 = REPO / "experiments" / "exp7_topk_lr_steps" / "run.py"
+    script.write_text(
+        "import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('exp7', {str(exp7)!r})\n"
+        "exp7 = importlib.util.module_from_spec(spec); spec.loader.exec_module(exp7)\n"
+        "from sae_raw.grid import run_grid\n"
+        "sched = {'shape': 'stages', 'stages': [[8, 0.4], [2, 0.4], [1, 0.2]]}\n"
+        "cells = exp7.make_topk_cells([(40, 1.0), (40, 2.0)], schedule=sched, batch_size=16,\n"
+        "                             n_evals=10)\n"
+        "run_grid('t', 't', 'unused', cells, argv=sys.argv[1:], eval_extra=exp7.eval_extra)\n")
+    args = [sys.executable, str(script), "--data-dir", str(tmp_path / "data"),
+            "--grid-dir", str(tmp_path / "grid"), "--subset", "60", "--heartbeat-seconds", "0"]
+    r = subprocess.run(args, capture_output=True, text=True, cwd=REPO, timeout=300)
+    assert r.returncode == 0, r.stderr
+    summary = (tmp_path / "grid" / "summary.csv").read_text().splitlines()
+    assert summary[0].startswith("cell,lr_factor,lr,batch_size,steps,step,k,n_alive,n_top1")
+    assert len(summary) == 1 + 2 * 11  # 2 cells, evaluated at step 0 and 10 more times
+    rows = json.loads((tmp_path / "grid" / "steps40_lr1" / "result.json").read_text())
+    by_step = {row["step"]: row for row in rows}
+    assert by_step[32]["k"] == 2 and by_step[36]["k"] == 1
+    # At k = 1 every alive feature is some token's top feature, and vice versa.
+    assert by_step[40]["n_top1"] == by_step[40]["n_alive"]
