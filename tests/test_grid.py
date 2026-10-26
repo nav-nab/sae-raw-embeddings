@@ -74,10 +74,67 @@ def test_topk_grid_end_to_end(tmp_path):
     r = subprocess.run(args, capture_output=True, text=True, cwd=REPO, timeout=300)
     assert r.returncode == 0, r.stderr
     summary = (tmp_path / "grid" / "summary.csv").read_text().splitlines()
-    assert summary[0].startswith("cell,lr_factor,lr,batch_size,steps,step,k,n_alive,n_top1")
+    assert summary[0].startswith("cell,V,model,l1_coef,lr_factor,lr,batch_size,steps,step,k,"
+                                 "n_alive,n_top1")
     assert len(summary) == 1 + 2 * 11  # 2 cells, evaluated at step 0 and 10 more times
     rows = json.loads((tmp_path / "grid" / "steps40_lr1" / "result.json").read_text())
     by_step = {row["step"]: row for row in rows}
     assert by_step[32]["k"] == 2 and by_step[36]["k"] == 1
     # At k = 1 every alive feature is some token's top feature, and vice versa.
     assert by_step[40]["n_top1"] == by_step[40]["n_alive"]
+
+
+def _load(name, rel):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, REPO / rel)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_matched_schedule_starts_at_k0_and_halves_from_the_power_of_two_below():
+    exp8 = _load("exp8", "experiments/exp8_topk_sizes/run.py")
+    assert [k for k, _ in exp8.matched_schedule(42)["stages"]] == [42, 32, 16, 8, 4, 2, 1]
+    assert [k for k, _ in exp8.matched_schedule(71)["stages"]] == [71, 64, 32, 16, 8, 4, 2, 1]
+    t10 = _load("exp7", "experiments/exp7_topk_lr_steps/run.py").SCHEDULE
+    assert exp8.matched_schedule(128) == t10
+    assert abs(sum(f for _, f in exp8.matched_schedule(55)["stages"]) - 1) < 1e-12
+
+
+def test_run_grids_over_sizes_then_extend_a_cell(tmp_path):
+    _fake_data(tmp_path / "data")
+    exp9 = _load("exp9", "experiments/exp9_relu_sizes/run.py")
+    script = tmp_path / "sizes.py"
+    script.write_text(
+        "import importlib.util, sys\n"
+        f"spec = importlib.util.spec_from_file_location('exp9', {str(REPO / 'experiments/exp9_relu_sizes/run.py')!r})\n"
+        "exp9 = importlib.util.module_from_spec(spec); spec.loader.exec_module(exp9)\n"
+        "from sae_raw.grid import run_grids\n"
+        "cells = {V: exp9.cells_for(V, {0.1: 1, 0.3: 1}, batch_size=8, n_evals=5) for V in (30, 60)}\n"
+        "run_grids('t', 't', 'unused', cells, argv=sys.argv[1:], eval_extra=exp9.eval_extra)\n")
+    base = [sys.executable, str(script), "--root", str(tmp_path / "runs"),
+            "--data-dir", str(tmp_path / "data"), "--heartbeat-seconds", "0"]
+    r = subprocess.run(base + ["--sizes", "30"], capture_output=True, text=True, cwd=REPO,
+                       timeout=300)
+    assert r.returncode == 0, r.stderr
+    assert not (tmp_path / "runs" / "V60").exists()
+    cell = tmp_path / "runs" / "V30" / "V30_lam0.1"
+    assert (cell / "checkpoint.pt").exists() and (cell / "init.pt").exists()
+    rows = json.loads((cell / "result.json").read_text())
+    assert [row["step"] for row in rows] == [0, 6, 12, 18, 24, 30]
+    assert 0 <= rows[-1]["share_l0_1"] <= 1 and rows[-1]["max_l0"] >= 1
+    # Extend one cell to 45 steps: it trains on from step 30 and nothing else reruns.
+    ext = base + ["--sizes", "30", "--extend", "V30_lam0.1", "45"]
+    r = subprocess.run(ext, capture_output=True, text=True, cwd=REPO, timeout=300)
+    assert r.returncode == 0, r.stderr
+    assert "Resuming from" in r.stdout and "1 already done" in r.stdout
+    rows = json.loads((cell / "result.json").read_text())
+    assert [row["step"] for row in rows][-4:] == [30, 36, 42, 45]
+    assert rows[-1]["steps"] == 45
+    # The same command again changes nothing.
+    r = subprocess.run(ext, capture_output=True, text=True, cwd=REPO, timeout=300)
+    assert r.returncode == 0 and "changes nothing" in r.stdout and "2 already done" in r.stdout
+    # An unknown cell name is refused.
+    r = subprocess.run(base + ["--sizes", "30", "--extend", "nope", "50"], capture_output=True,
+                       text=True, cwd=REPO, timeout=300)
+    assert r.returncode != 0 and "no cell named" in r.stderr

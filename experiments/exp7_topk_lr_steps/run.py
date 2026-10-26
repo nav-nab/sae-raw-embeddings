@@ -27,9 +27,7 @@ and resumes the interrupted one. A heartbeat every minute shows progress and
 the ETA for the whole grid. Everything is logged to runs/exp7/run.log.
 """
 
-import torch
-
-from sae_raw.evaluation import recovery_fields
+from sae_raw.evaluation import n_top1, recovery_fields
 from sae_raw.grid import run_grid
 
 SCHEDULE = {"shape": "stages",
@@ -48,17 +46,6 @@ def make_topk_cells(spec, schedule=SCHEDULE, batch_size=BATCH_SIZE, n_evals=N_EV
                       "steps": steps, "eval_every": steps // n_evals, "lr_factor": lrf,
                       "batch_size": batch_size})
     return cells
-
-
-@torch.no_grad()
-def n_top1(model, E, chunk=1024):
-    """Features that are the top feature, with a positive pre-activation, for some token."""
-    winners = torch.zeros(model.m, dtype=torch.bool, device=E.device)
-    for start in range(0, E.shape[0], chunk):
-        a = E[start:start + chunk] @ model.W_enc.T + model.b_enc
-        val, idx = a.max(dim=1)
-        winners[idx[val > 0]] = True
-    return int(winners.sum())
 
 
 def eval_extra(model, E):

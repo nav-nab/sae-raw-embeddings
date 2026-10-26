@@ -15,6 +15,8 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 5** (`docs/experiment_5_alive_at_init.md`, code `experiments/exp5_alive_at_init/`, done): the share of TopK features alive at initialisation for vocabulary sizes from 2,000 to 50,257 and $k$ from 1 to 256, with no training. It gives the starting $k$ needed for a given share alive as the vocabulary grows (Part 3 of the write-up).
 - **Experiment 6** (`docs/experiment_6_hull_vertices.md`, code `experiments/exp6_hull_vertices/`, done): whether a ReLU encoder can output exact one-hot codes, which holds for a token exactly when its embedding is a vertex of the convex hull of the table. Result: every GPT-2 embedding is a vertex, and the margin of separation predicts which tokens Experiment 2 recovered.
 - **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, ready to run): the best TopK annealing schedule on the 2,000-token subvocabulary, with 2 and 4 times the training steps and with half and twice the learning rate, to see whether either reduces the features lost at the drop to $k = 1$.
+- **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, ready to run): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive (Part 3a of the write-up).
+- **Experiment 9** (`docs/experiment_9_relu_sizes.md`, code `experiments/exp9_relu_sizes/`, ready to run): L1 ReLU SAEs at the same sizes and several values of $\lambda$, to see how the training needed and the best $\lambda$ change with vocabulary size (Part 3b). Runs keep their checkpoints so that they can be extended.
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
 
@@ -34,8 +36,9 @@ sae_raw/              shared library code
   train.py            samplers, k schedules, and the resumable training loop
                       (checkpoints, heartbeat)
   evaluation.py       full-vocabulary summary, revival of dead features, decoder recovery
-  grid.py             grid searches on the subvocabulary (Experiments 4 and 7): one
-                      resumable run per cell, recovery along each run, summary.csv
+  grid.py             grid searches on subvocabularies (Experiments 4, 7, 8 and 9): one
+                      resumable run per cell, recovery along each run, summary.csv;
+                      one grid per vocabulary size; extending finished runs
   run.py              the runner behind the experiment scripts: data, timing, training,
                       analysis, logging
 experiments/
@@ -46,6 +49,8 @@ experiments/
   exp5_alive_at_init/run.py  measures features alive at initialisation (Experiment 5)
   exp6_hull_vertices/run.py  tests which embeddings are convex-hull vertices (Experiment 6)
   exp7_topk_lr_steps/run.py  runs all of Experiment 7
+  exp8_topk_sizes/run.py     runs all of Experiment 8
+  exp9_relu_sizes/run.py     runs all of Experiment 9 (--sizes, --extend)
 scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
 docs/
@@ -57,6 +62,8 @@ docs/
   experiment_5_alive_at_init.md  features alive at initialisation, by vocabulary size
   experiment_6_hull_vertices.md  one-hot codes and the convex hull of the embeddings
   experiment_7_topk_lr_steps.md  TopK annealing with more steps and other learning rates
+  experiment_8_topk_sizes.md     TopK annealing at intermediate vocabulary sizes
+  experiment_9_relu_sizes.md     L1 ReLU SAEs at intermediate vocabulary sizes
   failure_modes.md             running table of failed attempts and why they failed
   write_up_plan.md             framing of the write-up: one success mode, many failure modes
   planning/                    original planning documents, kept unchanged as a record
@@ -86,6 +93,8 @@ caffeinate -i python experiments/exp2_l1_relu/run.py
 caffeinate -i python experiments/exp3_k_annealing/run.py
 caffeinate -i python experiments/exp4_relu_grid/run.py
 caffeinate -i python experiments/exp7_topk_lr_steps/run.py
+caffeinate -i python experiments/exp8_topk_sizes/run.py
+caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 5000 10000
 ```
 
 Run the scripts from the repository root, since `data/` and `runs/` are relative paths. Run one experiment at a time: each one sizes itself to the whole machine, so two at once would each take about twice as long. `caffeinate -i` keeps the Mac awake. Each script does every step:
@@ -101,7 +110,7 @@ Run the scripts from the repository root, since `data/` and `runs/` are relative
 
 **Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, active features per token, alive count and revival. Each evaluation is also logged in full.
 
-Experiments 4 and 7 run many short cells and write a grid directory instead (`runs/exp4/` or `runs/exp7/`, one folder per cell and a `summary.csv`); their docs describe them. For Experiments 1 to 3:
+Experiments 4 and 7 to 9 run several shorter cells and write grid directories instead (`runs/exp4/`, `runs/exp7/`, and one folder per vocabulary size under `runs/exp8/` and `runs/exp9/`, each with one folder per cell and a `summary.csv`); their docs describe them. Experiment 9's runs can be extended with `--extend CELL STEPS`, which sets the run's new total. For Experiments 1 to 3:
 
 **Run directory** (`--run-dir`, default `runs/exp1`, `runs/exp2` or `runs/exp3`, about 4.5 GB with snapshots):
 
@@ -157,5 +166,8 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 6: one-hot codes and convex-hull vertices
 - [x] Experiment 7: script written
 - [ ] Experiment 7 run
+- [x] Experiments 8 and 9: scripts written
+- [ ] Experiment 8 run, and Experiment 9 at 5,000 and 10,000 tokens (night 1)
+- [ ] Experiment 9 at 20,000 tokens (night 2)
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
 - [x] Experiment 2 full run (85,100 steps)

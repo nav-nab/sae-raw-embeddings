@@ -156,3 +156,30 @@ def analyse(init_model, final_model, E, p, thresholds=(0.9, 0.99)):
 def recovery_fields(model, E, thresholds=(0.9, 0.99)):
     """Decoder recovery of a model, as evaluation fields (for train's eval_extra)."""
     return recovery_summary(*recovery(model.W_dec, E), thresholds=thresholds)
+
+
+@torch.no_grad()
+def n_top1(model, E, chunk=1024):
+    """Features that are the top feature, with a positive pre-activation, for some token.
+
+    For a TopK model at k > 1, this is the number of features that would survive
+    a drop to k = 1 at this point.
+    """
+    winners = torch.zeros(model.m, dtype=torch.bool, device=E.device)
+    for start in range(0, E.shape[0], chunk):
+        a = E[start:start + chunk] @ model.W_enc.T + model.b_enc
+        val, idx = a.max(dim=1)
+        winners[idx[val > 0]] = True
+    return int(winners.sum())
+
+
+@torch.no_grad()
+def code_spread_fields(model, E, chunk=1024):
+    """Spread of the number of active features per token (uniform over tokens)."""
+    l0 = torch.cat([model.activity(E[s:s + chunk])[1] for s in range(0, E.shape[0], chunk)])
+    l0 = l0.float()
+    return {"median_l0": float(l0.median()), "max_l0": int(l0.max()),
+            "share_l0_1": float((l0 == 1).float().mean()),
+            "share_l0_2": float((l0 == 2).float().mean()),
+            "share_l0_3": float((l0 == 3).float().mean()),
+            "share_l0_4plus": float((l0 >= 4).float().mean())}
