@@ -171,7 +171,7 @@ def _parser(description, default_run_dir, schedule, l1_coef, batch_size):
                    help="full-vocabulary evaluations during training, after step 0")
     p.add_argument("--batch-size", type=int, default=batch_size)
     p.add_argument("--lr", type=float, default=None,
-                   help="default: 2e-4 / sqrt(m / 2^14), the Gao et al. rule")
+                   help="default: 2e-4 / sqrt(m / 2^14), 1/sqrt(m) scaling after Gao et al.")
     p.add_argument("--seed", type=int, default=0)
     if l1_coef is not None:
         p.add_argument("--l1-coef", type=float, default=l1_coef, help="L1 penalty coefficient")

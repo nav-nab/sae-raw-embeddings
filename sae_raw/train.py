@@ -47,9 +47,12 @@ SNAPSHOT_DIR = "snapshots"         # snapshots/model_step<N>.pt: parameters kept
 
 
 def default_lr(m):
-    """Learning rate from the scaling rule of Gao et al. (2024): 2e-4 / sqrt(m / 2^14).
+    """Base learning rate 2e-4 / sqrt(m / 2^14).
 
-    This gives about 1.1e-4 for m = 50,257. The rule was derived for TopK SAEs.
+    The 1/sqrt(m) scaling follows Gao et al. (2024), who found that the
+    largest learning rate that converges for TopK SAEs scales as 1/sqrt(n)
+    latents. The constant (2e-4 at m = 2^14) is our normalisation; the paper
+    does not state one. This gives about 1.1e-4 for m = 50,257.
     """
     return 2e-4 / math.sqrt(m / 2 ** 14)
 

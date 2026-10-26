@@ -116,7 +116,7 @@ A feature counts as revived if its parameters differ from their initial values b
 
 The final analysis recomputes revival from `init.pt` and `model.pt`. It also measures decoder recovery: for each token, the decoder row with the highest cosine to its normalised embedding. A token counts as recovered if that row is a mutual nearest neighbour and the cosine is above a threshold (0.9 and 0.99). A full one-to-one assignment over a $V \times m$ matrix is too large, so mutual nearest neighbours stand in for it.
 
-`--subset N` trains on the N most frequent tokens with $m = N$, for quick debugging runs (use a separate `--run-dir`). The learning rate defaults to $2\times10^{-4}/\sqrt{m/2^{14}}$ (the scaling rule of Gao et al.), about $1.1\times10^{-4}$ at $m = 50{,}257$.
+`--subset N` trains on the N most frequent tokens with $m = N$, for quick debugging runs (use a separate `--run-dir`). The learning rate defaults to $2\times10^{-4}/\sqrt{m/2^{14}}$, about $1.1\times10^{-4}$ at $m = 50{,}257$. The $1/\sqrt{m}$ scaling follows Gao et al. (2024). The constant is our normalisation, since the paper does not state one (see `docs/write_up_plan.md`).
 
 ## Model choices
 
