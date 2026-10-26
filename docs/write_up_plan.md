@@ -111,6 +111,12 @@ Unlike TopK, a ReLU SAE lets each token use any number of features, so the codes
 
 Every token uses at least one feature. A weaker penalty leaves more tokens on a single feature. At $\lambda = 1$, codes are as sparse on average, but more tokens share two features, since fewer features are alive.
 
+A feature counts as active on a token if its coefficient is above zero, as in Part 1 and in the logged `mean_l0`.
+
+**A cutoff on small coefficients changes little.** One could argue that a feature with a tiny coefficient should not count as used. A natural cutoff is relative to the token's largest coefficient $f_{\max}$, which is about $\lvert x\rvert - \lambda/2$. Embedding norms range from 2.45 to over 4, and $\lambda$ varies between runs, so a fixed absolute cutoff would mean different things for different tokens and runs. If the decoder rows are roughly orthogonal, a feature with coefficient $f$ contributes about $(f/f_{\max})^2$ of the reconstruction's squared norm. A cutoff at $f \ge 0.1\,f_{\max}$ therefore drops only features that contribute about 1% or less.
+
+With this cutoff, the share of tokens using one feature changes by at most 2 percentage points in every row of the table above. The cutoff mainly trims the tail. In Experiment 2, the share using 4 or more features falls from 5.4% to 2.9%, and the mean from 1.37 to 1.27. The secondary coefficients are mostly not small: their median is 20% to 45% of the main coefficient, depending on the run.
+
 There are three regimes:
 
 - **Undertrained: dense codes.** At a small $\lambda$, a low learning rate or too few steps, every feature stays alive, but tokens still use many features each. This is a slow success, not a true failure. These runs are on the way to recovery and get there with more steps. An earlier sweep at a fixed 4,000 steps had wrongly classed $\lambda = 0.03$ as a failure for this reason.
