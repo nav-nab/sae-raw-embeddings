@@ -1,6 +1,6 @@
 # Experiment 3: TopK with k-annealing
 
-Status: ready to run with schedule O (chosen 2026-10-19, see below), with a first budget of 10 hours that can be extended.
+Status: done. Run on the laptop on 2026-10-19 to 20 with schedule O: 15,980 steps at batch size 4,096 in 10.2 hours. Results at the end.
 
 ## Motivation
 
@@ -125,3 +125,43 @@ The script prepares the data if needed and times a few steps at each $k$ of the 
 ## Code
 
 `experiments/exp3_k_annealing/run.py` describes the experiment and calls the shared runner in `sae_raw/run.py`. The model is `TopKSAE` in `sae_raw/model.py`; with $k = 1$ it matches `Top1SAE`. The schedule is `k_schedule` in `sae_raw/train.py`. `k_stages` lays it out over the run as a list of $k$ and last step, and `stretch_stages` lengthens it for an extension.
+
+## Results
+
+The run was not extended. The final model is a Top1 SAE, since the schedule ends at $k = 1$.
+
+| | Experiment 1 (Top1 throughout) | Experiment 3 (schedule O) |
+|---|---|---|
+| Steps, batch size | 16,820 at 4,096 | 15,980 at 4,096 |
+| Features alive at the end (of 50,257) | 259 | 36,354 (72%) |
+| Relative loss | 0.654 | 0.073 |
+| Tokens recovered at cosine > 0.9 | 16 | **35,261 (70%)** |
+| Tokens recovered at cosine > 0.99 | | 28,502 (57%) |
+
+Every token has an active feature at the end. 36,385 tokens have a mutual-nearest decoder row, with a median best cosine of 0.99997.
+
+**Alive features along the run**, at the evaluations just before and after each drop in $k$:
+
+| Point in the run | Step | $k$ | Alive features |
+|---|---|---|---|
+| Initialisation | 0 | 128 | 46,908 |
+| Peak | 799 | 128 | 50,249 |
+| After the drop to 32 | 2,397 | 32 | 48,409 |
+| End of $k = 4$ | 6,392 | 4 | 47,147 |
+| After the drop to 2 | 7,191 | 2 | 43,105 |
+| End of $k = 2$ | 12,784 | 2 | 43,349 |
+| After the drop to 1 | 13,583 | 1 | 36,351 |
+| End | 15,980 | 1 | 36,354 |
+
+### Findings
+
+- **Annealing works at full scale.** Experiment 3 recovers 70% of the tokens, against 16 tokens for Top1 throughout. This matches the subset, where schedule O recovered 75%.
+- **Surviving features are almost all correct.** 97% of the alive features are recovered tokens.
+- **The shortfall comes from features dying at the drops in $k$.** The start at $k_0 = 128$ revived all 3,349 features dead at initialisation within 800 steps, and 50,249 features were alive at the peak. The drop to 32 cost about 1,800 features, and the drop to 2 about 4,000. The drop to $k = 1$ cost 6,998, or 16% of those alive, as on the subset (15% to 20%).
+- **Dead features almost never revive.** Over the 6,400 steps at $k = 2$, the alive count rose by 244. After the drop to $k = 1$ it rose by 3.
+
+### After the run: AuxK pilots (2026-10-20)
+
+We tried to rescue the features lost at the drops with the auxiliary loss of Gao et al. (2024), AuxK, which trains dead features to reconstruct the residual. An argument predicts it fails at $k = 1$. A dead feature aligned with the residual of a token coded at cosine $\cos\theta$ scores about $\lvert x\rvert\sin\theta$ on that token, against $\lvert x\rvert\cos\theta$ for the incumbent. At $\cos\theta = 0.9$, that is $0.44\lvert x\rvert$ against $0.9\lvert x\rvert$, so the dead feature does not win the token.
+
+On the subset with schedule O, two runs with standard AuxK recovered 1,476 and 1,478 tokens, against 1,499 without it. A variant that targets the whole token at $k = 1$ gave about 40 more tokens, which is close to the noise. AuxK was dropped. Even before the final drop it could not help much, because features die *at* the drops, not between them.
