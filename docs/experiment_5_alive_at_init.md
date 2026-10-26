@@ -44,6 +44,32 @@ The two seeds differ by at most 2 percentage points (at $V = 2{,}000$, $k = 8$),
 - **Size and token mix are confounded.** A larger subvocabulary adds rarer tokens, so the measurement mixes the effect of $V$ with any change in the embeddings' geometry. Random subsets of each size would separate the two, if that ever matters.
 - **This is a start-of-training measurement.** Whether matching the share alive at the start also matches recovery at the end is tested by the next experiment on the list: annealing runs at intermediate sizes.
 
+## Shape of the growth (2026-10-26)
+
+**Exact thresholds.** The smallest integer $k$ at which the mean share alive reaches each target, from the shares at every $k$ from 1 to 256:
+
+| $V$ | 2,000 | 5,000 | 10,000 | 20,000 | 30,000 | 40,000 | 50,257 |
+|---|---|---|---|---|---|---|---|
+| $k$ for 90% alive | 25 | 32 | 40 | 52 | 65 | 76 | 88 |
+| $k$ for 93% alive | 32 | 42 | 55 | 71 | 88 | 105 | 123 |
+| $k$ for 95% alive | 40 | 53 | 70 | 92 | 115 | 138 | 161 |
+| $k$ for 97% alive | 51 | 73 | 100 | 131 | 164 | 204 | 236 |
+
+These supersede the interpolated values above.
+
+**Fits.** Least squares on relative error, for the 93% row. The other targets give the same ranking.
+
+| Form | Parameters | RMS relative error |
+|---|---|---|
+| $c\,V^p$ | 2 | 5.9% |
+| $a + bV$ | 2 | 5.2% |
+| $a + c\,V^p$ | 3 | 2.1% |
+| $a\,V^p + bV$ | 3 | 1.5% |
+
+- **Above about 20,000 tokens the growth is close to linear in $V$:** each extra 10,000 tokens adds about 17 to $k$ for 93% alive. A single power $c\,V^p$ cannot bend this way: its slope falls as $V$ grows.
+- **The best two-term form is a small power plus a linear term,** $k \approx 6.6\,V^{0.20} + 0.0013\,V$ for 93%. The power term dominates at small $V$ and the linear term at large $V$.
+- **Caveats.** Seven points support three parameters only loosely, so the forms should not be extrapolated far. Also, larger subvocabularies add rarer tokens, so the linear growth may partly reflect the token mix rather than size alone.
+
 ## How to run
 
 ```
