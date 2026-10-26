@@ -71,7 +71,20 @@ The loss is $\lvert x - \hat{x}\rvert^2 + \lambda\sum_j f_j$, with codes $f_j \g
 
 **The write-up should give the argument step by step, at the level of Appendix A below**, not in compressed form.
 
-The argument assumes the encoder can produce exact one-hot codes: each feature must be inactive on every other token. Whether a ReLU encoder can do this for the GPT-2 embeddings is still to be checked (see the next experiments).
+The argument assumes the encoder can produce exact one-hot codes: each feature must be inactive on every other token. This holds for a token exactly when its embedding is a vertex of the convex hull of the embedding table (Appendix B). For GPT-2 it holds for every token, so the minimiser is reachable in principle. The results of the check are at the end of Appendix B.
+
+How well a token is separated predicts whether Experiment 2 recovered it. The table uses the own-direction margin of Appendix B: how far the token's own projection exceeds the largest projection of any other token, as a fraction of its norm.
+
+| Own-direction margin | Tokens | Recovered in Experiment 2 |
+|---|---|---|
+| 0 or below (test fails) | 172 | 37% |
+| 0 to 0.1 | 1,431 | 64% |
+| 0.1 to 0.2 | 7,467 | 77% |
+| 0.2 to 0.3 | 13,107 | 91% |
+| 0.3 to 0.4 | 13,480 | 99.3% |
+| Above 0.4 | 14,600 | 100% |
+
+So the unrecovered 7% are not tokens that a ReLU encoder cannot isolate. They are tokens it can isolate only through a narrow gap, which training did not find.
 
 ### Empirical findings: where recovery happens
 
@@ -137,7 +150,7 @@ In order of priority:
 1. ~~**Alive share at initialisation against $k$ at intermediate vocabulary sizes**~~ **Done (Experiment 5, 2026-10-26).** Sizes 2,000 to 50,257, $k$ from 1 to 256, two seeds. Results in Part 3a.
 2. **Annealing runs at two or three intermediate sizes** (Part 3a), with $k_0$ chosen to give the same alive share at the start. This tests whether the alive share at the start predicts recovery at the end. Each run is short compared with Experiment 3.
 3. **ReLU runs at the same intermediate sizes** (Part 3b). These would use a few values of $\lambda$, trained long enough to converge, to measure how training length and the best $\lambda$ change with $V$. The subset grid showed that progress depends on learning rate × steps, so the runs can use a small batch and the Gao rate.
-4. **A check of the ReLU theory** (Part 2). Test whether a ReLU encoder can produce exact one-hot codes for the GPT-2 embeddings, by constructing the encoder from the embeddings and choosing biases. This is a short calculation, not a training run.
+4. ~~**A check of the ReLU theory** (Part 2).~~ **Done (2026-10-26).** Every GPT-2 embedding is a vertex of the convex hull, so exact one-hot codes exist. Results at the end of Appendix B.
 5. **Write-up housekeeping.** Add the Experiment 3 results to its doc and to `docs/failure_modes.md`.
 
 One optional item is a TopK check of learning rate and batch size, mirroring the ReLU grid. It would show whether TopK's failures are also partly undertraining. I'd leave it out unless a reader is likely to ask, because the TopK losses happen at the drops in $k$, which more training at $k = 1$ cannot reverse.
@@ -175,4 +188,47 @@ Note that the minimum is not at full length. At $t = \lvert x\rvert$ the loss is
 
 **Step 3: one feature pointing at the token reaches the bound.** Use the single feature $d = x/\lvert x\rvert$ with coefficient $f = \lvert x\rvert - \lambda/2$. The reconstruction is $x$ shortened by $\lambda/2$, so the error is $(\lambda/2)^2$, and the penalty is $\lambda(\lvert x\rvert - \lambda/2)$. They add to $\lambda\lvert x\rvert - \lambda^2/4$, exactly the bound.
 
-**Conclusion.** No code can do better for a token than a single feature pointing along it, with coefficient $\lvert x\rvert - \lambda/2$. With $m = V$, every token can have its own such feature, so every token sits at its lower bound at once, and the normalised embeddings minimise the total loss. The only assumption is that the ReLU encoder can output this code exactly: the token's own feature active, every other feature at zero.
+**Conclusion.** No code can do better for a token than a single feature pointing along it, with coefficient $\lvert x\rvert - \lambda/2$. With $m = V$, every token can have its own such feature, so every token sits at its lower bound at once, and the normalised embeddings minimise the total loss. The only assumption is that the ReLU encoder can output this code exactly: the token's own feature active, every other feature at zero. Appendix B turns this assumption into a geometric condition.
+
+## Appendix B: when can a ReLU encoder output one-hot codes?
+
+The write-up should explain this at the same level of detail as Appendix A.
+
+**What is needed.** The encoder computes $f_j = \mathrm{ReLU}(w_j \cdot x + b_j)$, with an encoder row $w_j$ and a bias $b_j$ for each feature. Write $x_1, \dots, x_V$ for the embeddings, with feature $j$ assigned to token $j$. The code of Appendix A requires two things of feature $j$:
+
+- **On its own token:** $w_j \cdot x_j + b_j = \lvert x_j\rvert - \lambda/2$, which is positive.
+- **On every other token:** $w_j \cdot x_i + b_j \le 0$ for all $i \ne j$, so the ReLU outputs zero.
+
+**Step 1: the condition splits into one question per token.** The encoder is not tied to the decoder, so each pair $(w_j, b_j)$ can be chosen on its own. The two requirements on feature $j$ say: the hyperplane $w_j \cdot x + b_j = 0$ has $x_j$ strictly on its positive side and every other token on or behind it.
+
+**Step 2: the scale is free.** Suppose some pair $(w, b)$ separates $x_j$ this way, with $w \cdot x_j + b = s > 0$. Multiplying both by $(\lvert x_j\rvert - \lambda/2)/s$ keeps every other token on or behind the hyperplane and sets the coefficient on $x_j$ to exactly $\lvert x_j\rvert - \lambda/2$. So feature $j$ can produce the required code exactly when some hyperplane separates $x_j$ from the other tokens. The value of $\lambda$ plays no part.
+
+**Step 3: separable means a vertex of the convex hull.** A point can be separated from a finite set of points exactly when it is not a weighted average (a convex combination) of them. One direction is short. If $x_j = \sum_{i \ne j} c_i x_i$ with $c_i \ge 0$ and $\sum_i c_i = 1$, then for any $w$ and $b$,
+
+$$w \cdot x_j + b = \sum_{i \ne j} c_i\,(w \cdot x_i + b) \le 0,$$
+
+since every term in the sum is at most zero. So the coefficient on $x_j$ cannot be positive. The other direction is the separating hyperplane theorem. A token that is not a weighted average of the others is a vertex of the convex hull of the embedding table.
+
+**Conclusion.** One-hot codes are possible for exactly the tokens whose embeddings are vertices of the convex hull of the table. If every embedding is a vertex, the minimiser of Appendix A is reachable. A token that is not a vertex can never have a feature of its own, so it must be coded as a mixture of features, at a loss above its bound.
+
+**How to check it.** Two tests, from cheap to exact:
+
+1. **The own-direction test (sufficient).** Take $w_j = x_j/\lvert x_j\rvert$. This separates $x_j$ if no other token projects further along $x_j$'s direction than $x_j$ itself: $\max_{i \ne j} w_j \cdot x_i < \lvert x_j\rvert$. The bias then sits between the two values. A token that passes is a vertex.
+2. **The linear-programme test (exact).** For a token that fails the first test, a different direction may still separate it. A linear programme decides whether any separating hyperplane exists: 769 unknowns ($w_j$ and $b_j$) and one constraint per other token.
+
+The first test differs from a tied encoder. With $w_j$ tied to the decoder row $x_j/\lvert x_j\rvert$, the coefficient on $x_j$ forces $b_j = -\lambda/2$, so every other token needs $w_j \cdot x_i \le \lambda/2$. That is far stricter, and depends on $\lambda$. Our SAEs have untied encoders, so only the hull condition matters.
+
+**Results for GPT-2 (2026-10-26, sandbox, about 20 minutes).**
+
+| Test | Full table (50,257) | Subset (2,000) |
+|---|---|---|
+| Pass the own-direction test | 50,085 | 1,999 |
+| Fail it, but separable by linear programme | 172 | 1 |
+| Not separable | 0 | 0 |
+
+Every embedding is a vertex of the hull. For 99.66% of tokens, the token's own direction already separates it.
+
+The linear programme bounds $w$ by $\lvert w_i\rvert \le 1$ in each coordinate and maximises $w \cdot x_j + b$. Constraints are added in rounds: the 2,000 tokens that project furthest along $x_j$'s direction come first, then any violated constraints, until none remain. The margin it reports (the gap to the nearest other token along the unit vector $w/\lvert w\rvert$, as a fraction of $\lvert x_j\rvert$) is a lower bound on the best possible margin. The 172 tokens fall into two groups:
+
+- **115 tokens, margin 0.32 to 0.40.** They are well separated, just not along their own direction. Experiment 2 recovered 63 of them.
+- **57 tokens, margin about 0.037.** 56 of them never occur in the Wikipedia count, so they are probably unused tokens. Experiment 2 recovered 1 of them.
