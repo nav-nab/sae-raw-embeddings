@@ -51,7 +51,7 @@ Least squares on relative error. The four target shares (90%, 93%, 95%, 97%) giv
 | $a + bV$ | 2 | 3.8% | 9.1% |
 | $a\,V^p + bV$ | 3 | **1.7%** | 0.9%, with $b \approx 0$ |
 
-**For random tokens, a single power law fits.** For 93% alive, $k \approx 2.9\,V^{0.34}$. The exponent rises slightly with the target: 0.34 for 90%, 0.36 for 95% and 0.37 for 97%. The linear term of the three-parameter form fits to almost zero.
+**For random tokens, a single power law fits.** For 93% alive, $k \approx 2.90\,V^{0.345}$. The exponent rises slightly with the target: 0.340 for 90%, 0.355 for 95% and 0.374 for 97%. The linear term of the three-parameter form fits to almost zero.
 
 **For the most frequent tokens, the power-plus-linear form fits best.** For 93% alive, $k \approx 9.0\,V^{0.16} + 0.0014\,V$, close to the values from the first seven sizes ($6.6\,V^{0.20} + 0.0013\,V$). The fits for the other targets:
 
@@ -64,7 +64,7 @@ Least squares on relative error. The four target shares (90%, 93%, 95%, 97%) giv
 
 ## Reading
 
-- **The effect of size alone is a power law, $k \propto V^{0.34}$ to $V^{0.37}$.** This is what the random subsets measure.
+- **The effect of size alone is a power law, $k \propto V^{0.34}$ to $V^{0.37}$.** This is what the random subsets measure. The constant and the exponent go together, so the exponent should be quoted to three figures when the constant is used: rounding 0.345 to 0.34 makes the curve about 6% low at full scale.
 - **The speed-up at large $V$ comes from the token mix, not from size.** Frequency subsets start with the easiest tokens, so they need a smaller $k$ than random subsets at small $V$. Adding rarer tokens then raises the needed $k$ faster than size alone would, until the two curves meet at the full table. The linear term in the frequency fit describes this catch-up. It is not a property of size.
 - **Which curve the write-up uses depends on the claim.** For a scaling law in vocabulary size, the random-subset power law is the clean one. For carrying a schedule from the pilot subset (the 2,000 most frequent tokens) to the full table, the frequency curve is the relevant one, since that is the path our experiments took.
 - **This is a start-of-training measurement.** Whether matching the share alive at the start also matches recovery at the end is tested by the next experiment on the list: annealing runs at intermediate sizes.
