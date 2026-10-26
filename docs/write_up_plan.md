@@ -182,6 +182,8 @@ At the two sizes trained so far, starting runs this way gave similar recovery: 6
 
 Open questions: how does the training needed for a given $\lambda$ grow with $V$, and does the best $\lambda$ change? On the subset, $\lambda = 0.03$ beat 0.3 given enough training. At full scale only $\lambda = 0.3$ has been run, and it already took 47 hours.
 
+The geometry of the embeddings barely changes across these sizes, so any change in recovery with $V$ can be put down to training. Experiment 6 showed that recovery tracks how widely each token is separated from the others (the own-direction margin). As $V$ grows from 2,000 to 50,257, the median margin falls only from 0.36 to 0.32, and the share of narrowly separated tokens (margin below 0.2) rises only from 16% to 18%. A clear fall in recovery with $V$ would therefore come from training (steps, learning rate or deaths), not from tokens becoming harder to isolate.
+
 ## Next experiments
 
 In order of priority:
