@@ -67,12 +67,11 @@ Subset runs ($V = m = 2{,}000$), 4,000 steps at batch size 512 unless marked. Re
 
 ### Theory: no zero-loss dictionary, but the embeddings are still the natural target
 
-The loss is $\lvert x - \hat{x}\rvert^2 + \lambda\sum_j f_j$, with codes $f_j \ge 0$ and $\hat{x} = \sum_j f_j d_j$. With $\lambda > 0$, no dictionary reaches zero loss. The embeddings remain the natural target, for two reasons:
+The loss is $\lvert x - \hat{x}\rvert^2 + \lambda\sum_j f_j$, with codes $f_j \ge 0$ and $\hat{x} = \sum_j f_j d_j$. With $\lambda > 0$, no dictionary reaches zero loss. The embeddings remain the natural target, because no code can do better for a token than a single feature pointing along it, with coefficient $\lvert x\rvert - \lambda/2$. With $m = V$, every token can have its own such feature, so the normalised embeddings minimise the total loss. Experiment 2 shows exactly this shrinkage: each token's coefficient was its norm minus 0.15, which is $\lambda/2$ for $\lambda = 0.3$.
 
-- **One-hot codes are the cheapest.** By the triangle inequality, $\sum_j f_j \ge \lvert \hat{x}\rvert$ for unit-norm rows, with equality only if every active row points along $\hat{x}$. So any reconstruction costs the least L1 penalty when it uses a single feature aligned with it.
-- **The embeddings minimise each token's loss.** For one token, the loss over all reconstructions $y$ is at least $\min_y \lvert x - y\rvert^2 + \lambda\lvert y\rvert$. The minimum is at $y$ along $x$ with $\lvert y\rvert = \lvert x\rvert - \lambda/2$, giving $\lambda\lvert x\rvert - \lambda^2/4$. A feature equal to $x/\lvert x\rvert$, with coefficient $\lvert x\rvert - \lambda/2$, attains it. With $m = V$, every token can have its own such feature. Then every token is at its own minimum, so the normalised embeddings minimise the total loss. Experiment 2 shows exactly this shrinkage: the coefficient of a token's feature is its norm minus 0.15, which is $\lambda/2$.
+**The write-up should give the argument step by step, at the level of Appendix A below**, not in compressed form.
 
-The second argument assumes the encoder can produce exact one-hot codes: each feature must be inactive on every other token. Whether a ReLU encoder can do this for the GPT-2 embeddings is still to be checked (see the next experiments).
+The argument assumes the encoder can produce exact one-hot codes: each feature must be inactive on every other token. Whether a ReLU encoder can do this for the GPT-2 embeddings is still to be checked (see the next experiments).
 
 ### Empirical findings: where recovery happens
 
@@ -128,3 +127,38 @@ In order of priority:
 5. **Write-up housekeeping.** Add the Experiment 3 results to its doc and to `docs/failure_modes.md`.
 
 One optional item is a TopK check of learning rate and batch size, mirroring the ReLU grid. It would show whether TopK's failures are also partly undertraining. I'd leave it out unless a reader is likely to ask, because the TopK losses happen at the drops in $k$, which more training at $k = 1$ cannot reverse.
+
+## Appendix A: why the embeddings minimise the L1 loss
+
+The write-up should explain the Part 2 theory at this level of detail.
+
+**Setup.** Take one token $x$. The SAE reconstructs it as $\hat{x} = \sum_j f_j d_j$, with coefficients $f_j \ge 0$ and unit-length decoder rows $\lvert d_j\rvert = 1$. Its loss is
+
+$$L = \lvert x - \hat{x}\rvert^2 + \lambda \sum_j f_j .$$
+
+**Step 1: the penalty is at least the length of the reconstruction.** By the triangle inequality,
+
+$$\lvert \hat{x}\rvert = \Big\lvert \sum_j f_j d_j \Big\rvert \le \sum_j f_j \lvert d_j\rvert = \sum_j f_j .$$
+
+So $L \ge \lvert x - \hat{x}\rvert^2 + \lambda\lvert\hat{x}\rvert$. The bound depends only on the vector $\hat{x}$, not on how it was built.
+
+**Step 2: the best possible reconstruction.** Say $\hat{x}$ has length $t$. Among all vectors of length $t$, the one closest to $x$ points along $x$, so the error is at least $(\lvert x\rvert - t)^2$. Therefore
+
+$$L \ge h(t) = (\lvert x\rvert - t)^2 + \lambda t .$$
+
+The derivative is $h'(t) = -2(\lvert x\rvert - t) + \lambda$, which is zero at $t = \lvert x\rvert - \lambda/2$. There
+
+$$h = \left(\tfrac{\lambda}{2}\right)^2 + \lambda\left(\lvert x\rvert - \tfrac{\lambda}{2}\right) = \lambda\lvert x\rvert - \tfrac{\lambda^2}{4}.$$
+
+This is a lower bound on the token's loss, whatever the dictionary and whatever the code. It assumes $\lvert x\rvert > \lambda/2$, which holds here: the smallest GPT-2 embedding norm is 2.45.
+
+Note that the minimum is not at full length. At $t = \lvert x\rvert$ the loss is $\lambda\lvert x\rvert$, but $h'(\lvert x\rvert) = \lambda > 0$, so shrinking the reconstruction slightly lowers it. Shortening saves penalty at rate $\lambda$, while the squared error grows from zero only quadratically. For example, with $\lvert x\rvert = 4$ and $\lambda = 0.3$:
+
+| $t$ | Squared error | Penalty | Loss |
+|---|---|---|---|
+| 4 (full length) | 0 | 1.2 | 1.2 |
+| 3.85 (shrunk by $\lambda/2$) | 0.0225 | 1.155 | 1.1775 |
+
+**Step 3: one feature pointing at the token reaches the bound.** Use the single feature $d = x/\lvert x\rvert$ with coefficient $f = \lvert x\rvert - \lambda/2$. The reconstruction is $x$ shortened by $\lambda/2$, so the error is $(\lambda/2)^2$, and the penalty is $\lambda(\lvert x\rvert - \lambda/2)$. They add to $\lambda\lvert x\rvert - \lambda^2/4$, exactly the bound.
+
+**Conclusion.** No code can do better for a token than a single feature pointing along it, with coefficient $\lvert x\rvert - \lambda/2$. With $m = V$, every token can have its own such feature, so every token sits at its lower bound at once, and the normalised embeddings minimise the total loss. The only assumption is that the ReLU encoder can output this code exactly: the token's own feature active, every other feature at zero.
