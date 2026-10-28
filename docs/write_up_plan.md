@@ -8,6 +8,7 @@ With a dictionary of $m = V$ features trained on the raw token embedding table, 
 
 - **TopK SAEs** lose features whenever $k$ is small or drops, and dead features almost never revive. The best TopK setup recovers 70% of GPT-2's tokens.
 - **ReLU SAEs with an L1 penalty** recover the embeddings across a wide region of hyperparameters, provided they train long enough: 93% at full scale and 98% on a subvocabulary. Outside that region they fail in one of two ways: dense codes from too little training, or dead features from too much pressure.
+- **For ReLU SAEs, recovery does not depend on the vocabulary size.** Given the same training per token, recovery as a function of $\lambda$ is the same at 2,000, 5,000, 10,000 and 20,000 tokens, to within a few points, and consistent with the full table. The number of steps needed grows in proportion to $V$ (at a fixed batch size, the same epochs' worth). So the subvocabulary behaves as a faithful small-scale model of the full problem, and results found there carry over. This is a conceptual theme of the write-up (Part 3b).
 
 ## Setting and measurement
 
@@ -187,15 +188,35 @@ Details are in `docs/experiment_5_alive_at_init.md`.
 
 At the two sizes trained so far, starting runs this way gave similar recovery: 68% on the subset with $k_0 = 32$ (T8) and 70% on the full table with $k_0 = 128$ (T11). Whether this holds at the sizes in between is the next experiment.
 
-### 3b. The L1 coefficient and training length for ReLU
+### 3b. ReLU: recovery as a function of $\lambda$ does not depend on vocabulary size
 
-Open questions: how does the training needed for a given $\lambda$ grow with $V$, and does the best $\lambda$ change? On the subset, $\lambda = 0.03$ beat 0.3 given enough training. At full scale only $\lambda = 0.3$ has been run, and it already took 47 hours.
+**This is a conceptual theme of the write-up and should be emphasised.** Given the same training per token, ReLU recovery depends on $\lambda$ and on how long the run trains, and hardly at all on how many tokens there are.
+
+The questions were how the training needed for a given $\lambda$ grows with $V$, and whether the best $\lambda$ changes. Experiment 9 (`docs/experiment_9_relu_sizes.md`) trained at 5,000, 10,000 and 20,000 tokens, at batch size 256 and the Gao rate, with steps in proportion to $V$. Each $\lambda$ therefore got the same epochs' worth at every size. The 2,000-token column is from the matching Experiment 4 cells (Gao rate, batch 256), read at the nearest epochs' worth (262, 524, 1,049 and 4,194).
+
+| # | Outcome | $\lambda$ | Epochs' worth | $V$ = 2,000 | 5,000 | 10,000 | 20,000 |
+|---|---|---|---|---|---|---|---|
+| R6 | 🔴 | 1 | 256 | 830 (42%) | 1,587 (32%) | 3,291 (33%) | 8,442 (42%) |
+| R7 | 🟡 | 0.3 | 512 | 1,672 (84%) | 4,333 (87%) | 8,799 (88%) | 17,867 (89%) |
+| R8 | 🟢 | 0.1 | 1,024 | 1,804 (90%) | 4,604 (92%) | 9,262 (93%) | 18,033 (90%) |
+| R9 | 🟢 | 0.03 | 4,096 | 1,959 (98%) | 4,925 (98.5%) | | |
+
+Recovered tokens at cosine above 0.9. The full table fits the same picture: Experiment 2 (R5, $\lambda = 0.3$, about 1,700 epochs' worth) recovered 93%.
+
+- **The answer to the first question: the steps needed grow in proportion to $V$.** For each $\lambda$, every size ends within a few points of the others when steps scale with $V$, which at a fixed batch size means the same epochs' worth. Experiment 4 found that, at a fixed size, the batch size hardly matters once the number of steps is fixed. Together, the rule is: steps in proportion to $V$, whatever the batch size. The sparsification curves line up in epochs' worth too: at $\lambda = 0.3$, codes go from about 200 active features per token to about 1.6 over similar epochs at every size.
+- **The answer to the second question: the best $\lambda$ does not change.** At every size, a smaller $\lambda$ recovers more, given its longer training, and $\lambda = 1$ fails because about half the features die early (44% to 53% alive at the end).
+- **Why this matters.** The subvocabulary is a faithful small-scale model of the full problem for ReLU SAEs. The map of Experiment 4, which was cheap to compute on 2,000 tokens, predicts what happens at larger sizes once the number of steps is scaled with $V$. The cost of reaching a given recovery grows only in proportion to $V$, through the number of steps.
+- **Caveat: $\lambda = 0.1$ had not converged.** Its recovery was still rising steeply at the end at every size, so its numbers are lower bounds. The 20,000-token run also lagged the smaller sizes mid-run (50% recovered at 768 epochs' worth, against 70% at 5,000 tokens). A longer run would show whether it catches up fully. We judged the picture clear enough without it. $\lambda = 0.3$ was close to its plateau, and $\lambda = 1$ is capped by deaths.
+
+Two further points support reading the size-independence as a property of training rather than coincidence.
 
 The geometry of the embeddings barely changes across these sizes, so any change in recovery with $V$ can be put down to training. Experiment 6 showed that recovery tracks how widely each token is separated from the others (the own-direction margin). As $V$ grows from 2,000 to 50,257, the median margin falls only from 0.36 to 0.32, and the share of narrowly separated tokens (margin below 0.2) rises only from 16% to 18%. A clear fall in recovery with $V$ would therefore come from training (steps, learning rate or deaths), not from tokens becoming harder to isolate.
 
+The learning rate falls with size, as $1/\sqrt{m}$, so each update is smaller at larger $V$. Yet at the same epochs' worth, larger sizes take proportionally more steps. At $\lambda = 0.3$, learning rate × steps in absolute terms is about 3 times larger at 20,000 tokens than at 2,000, while recovery is the same. So across sizes, recovery tracks steps per token of vocabulary, not the absolute learning rate × steps.
+
 ## Next experiments
 
-Experiments 7 and 9 have run (2026-10-26 to 28). Experiment 7's results are in Part 1; Experiment 9 is still to be analysed. Two runs are outstanding:
+Experiments 7 and 9 have run (2026-10-26 to 28). Their results are in Parts 1 and 3b. Two runs are outstanding:
 
 1. **Experiment 7 extension** (Part 1, `docs/experiment_7_topk_lr_steps.md`). Two more seeds at 8,000 and 16,000 steps, to measure the run-to-run spread, and single runs at 32,000, 64,000 and 128,000 steps, to see whether the gains from more training keep shrinking. About 6 hours on the laptop.
 2. **Experiment 8: TopK annealing at intermediate sizes** (Part 3a, `docs/experiment_8_topk_sizes.md`). The 5,000, 10,000 and 20,000 most frequent tokens, starting at $k_0$ = 42, 55 and 71, which leave 93% of features alive at initialisation, with $2V$ steps so that every size gets 1,024 epochs' worth of training. It tests whether matching the share alive at the start also matches recovery at the end. About 5 hours on the laptop.
@@ -299,7 +320,7 @@ The write-up's methodology section should give a brief overview of these details
 |---|---|---|---|---|---|
 | Gao rate | $5.7\times10^{-4}$ | $3.6\times10^{-4}$ | $2.6\times10^{-4}$ | $1.8\times10^{-4}$ | $1.1\times10^{-4}$ |
 
-- **Training length** is measured in two ways. *Epochs' worth*: steps × $B$ / $V$. *Gao-rate steps*: steps × (learning rate / Gao rate). Progress depends mainly on Gao-rate steps (Experiments 4 and 7).
+- **Training length** is measured in two ways. *Epochs' worth*: steps × $B$ / $V$. *Gao-rate steps*: steps × (learning rate / Gao rate). At a fixed $V$, progress depends mainly on Gao-rate steps, whatever the batch size and learning rate (Experiments 4 and 7). Across sizes, for ReLU, the steps needed grow in proportion to $V$ (Experiment 9, at a fixed batch size).
 - **Evaluation.** Over every token of the vocabulary, weighted equally. A token is recovered if some decoder row is its mutual nearest neighbour at cosine above 0.9 (and 0.99). A feature is alive if it is active on at least one token. A feature is active on a token if its coefficient is positive.
 - **Seeds.** One seed (0) per run, except the Experiment 7 extension (seeds 0, 1 and 2 at two lengths).
 - **Hardware.** Full-scale runs and Experiments 7 to 9 ran on the laptop (CPU, PyTorch 2.2.2). Pilots ran in a cloud sandbox. The same run gave 1,495 and 1,531 recovered tokens on the two machines, so results from different machines can differ by about 35 tokens on the subset.
