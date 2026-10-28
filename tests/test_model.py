@@ -227,3 +227,10 @@ def test_alive_at_init_counts_match_full_pass():
     for k in (1, 2, 4, 8):
         model = build_model("topk", 16, 300, seed=3, k=k)
         assert counts[k] == int(full_pass(model, E)[2].sum())
+
+
+def test_relu_sae_with_zero_penalty_has_loss_equal_to_mse():
+    model = build_model("l1", 16, 40, seed=0, l1_coef=0.0)
+    x = torch.randn(8, 16)
+    loss, mse = model.loss(x)
+    assert torch.equal(loss, mse)

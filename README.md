@@ -17,6 +17,7 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, done; extension ready to run): the best TopK annealing schedule on the 2,000-token subvocabulary, with more training steps and with half and twice the learning rate. Result: progress depends on learning rate × steps, with smaller gains at each doubling (75% to 78% recovered). The extension adds seeds and runs of up to 128,000 steps.
 - **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, ready to run): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive, with $2V$ steps so that every size gets the same training per token (Part 3a of the write-up).
 - **Experiment 9** (`docs/experiment_9_relu_sizes.md`, code `experiments/exp9_relu_sizes/`, done): L1 ReLU SAEs at 5,000, 10,000 and 20,000 tokens and several values of $\lambda$ (Part 3b). Result: with steps in proportion to $V$, recovery as a function of $\lambda$ is the same at every size, to within a few points. Runs keep their checkpoints so that they can be extended.
+- **Experiment 10** (`docs/experiment_10_relu_no_penalty.md`, code `experiments/exp10_relu_no_penalty/`, done): a control with no sparsity penalty ($\lambda = 0$) on the 2,000-token subvocabulary, otherwise as Experiment 4's best cell. Result: no token recovered; codes stay dense (about 670 active features per token).
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
 
@@ -51,6 +52,7 @@ experiments/
   exp7_topk_lr_steps/run.py  runs all of Experiment 7
   exp8_topk_sizes/run.py     runs all of Experiment 8
   exp9_relu_sizes/run.py     runs all of Experiment 9 (--sizes, --extend)
+  exp10_relu_no_penalty/run.py  the lambda = 0 control (Experiment 10)
 scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
   run_night1.py       runs Experiments 7, 8 and 9 (5,000 and 10,000 tokens) in one go
@@ -65,6 +67,7 @@ docs/
   experiment_7_topk_lr_steps.md  TopK annealing with more steps and other learning rates
   experiment_8_topk_sizes.md     TopK annealing at intermediate vocabulary sizes
   experiment_9_relu_sizes.md     L1 ReLU SAEs at intermediate vocabulary sizes
+  experiment_10_relu_no_penalty.md  control: a ReLU SAE with no sparsity penalty
   failure_modes.md             running table of failed attempts and why they failed
   write_up_plan.md             framing of the write-up: one success mode, many failure modes
   planning/                    original planning documents, kept unchanged as a record
@@ -172,6 +175,7 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [ ] Experiment 7 extension (seeds 1 and 2 at 8,000 and 16,000 steps; 32,000 to 128,000 steps)
 - [x] Experiments 8 and 9: scripts written
 - [ ] Experiment 8 run
+- [x] Experiment 10: the lambda = 0 control
 - [x] Experiment 9 at 5,000 and 10,000 tokens (night 1)
 - [x] Experiment 9 at 20,000 tokens (night 2)
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written

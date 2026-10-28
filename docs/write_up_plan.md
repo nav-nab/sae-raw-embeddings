@@ -125,6 +125,7 @@ On the subset, Experiment 4 maps recovery over $\lambda$ (0.03 to 1), the learni
 | R3 | 🟡 | 0.3 | Subset, 8 million tokens | 1, 256 | 1,753 (88%) | about 4,000 |
 | R4 | 🟡 | 1 | Subset, 8 million tokens | ¼, 256 | 1,346 (67%) | about 2,000 |
 | R5 | 🟢 | 0.3 (Experiment 2) | Full table, 85,100 steps at batch 1,024 | 1, 1,024 | **46,590 (93%)** | 85,100 run; convergence not measured |
+| R10 | 🔴 | 0, no penalty (Experiment 10, control) | Subset, 8 million tokens | 1, 256 | 0 (0%) | never sparsifies |
 
 The failing cells of the grid are not listed here. They are the two failure modes described below: too little training, and too much pressure.
 
@@ -155,7 +156,9 @@ There are three regimes:
 Two rules describe the successful region:
 
 - **Training runs on learning rate × steps, not tokens seen.** Runs with the same product reach similar sparsity, whatever their batch size. Adam moves each weight by about the learning rate per step, so a larger batch gives a cleaner gradient but no faster progress.
-- **A weaker penalty recovers more, but needs longer.** A larger $\lambda$ kills more features on the way to one-hot codes, so its final recovery is lower. A smaller $\lambda$ kills fewer, but sparsifies more slowly. This is the ReLU form of the trade-off in Part 1.
+- **A weaker penalty recovers more, but needs longer.** A larger $\lambda$ kills more features on the way to one-hot codes, so its final recovery is lower. A smaller $\lambda$ kills fewer, but sparsifies more slowly. This is the ReLU form of the trade-off in Part 1. Measured as the steps at the Gao rate until codes reach 2 active features per token on average, the time needed grows roughly as $\lambda^{-0.7}$ between $\lambda = 0.03$ and 0.3: about 22,500 steps at 0.03, 5,000 to 8,000 at 0.1, and 2,000 to 4,000 at 0.3, in the cells without deaths. Above $\lambda = 0.3$ it stops falling. (Evaluations every half million tokens limit the precision to within a factor of about 1.5.)
+
+**The penalty does all the work (Experiment 10, `docs/experiment_10_relu_no_penalty.md`).** As $\lambda$ falls, recovery rises, so one might ask whether $\lambda = 0$ does best of all. It does not: it recovers nothing (R10). With no penalty, every exact reconstruction has zero loss, so the bound of Appendix A no longer singles out the embeddings. The run reconstructs as well as the best penalised run (relative loss about 0.001), but with dense codes of about 670 features per token. Its decoder rows stay close to random: the median best cosine between a token and any decoder row rises only from 0.12 at initialisation to 0.16. So the trend holds only for $\lambda > 0$. As $\lambda \to 0$, the training needed to sparsify diverges, and at $\lambda = 0$ itself the loss no longer prefers the embeddings at all.
 
 At full scale, Experiment 2 (R5: $\lambda = 0.3$, batch 1,024) recovered 46,590 tokens at cosine above 0.9 (93%) and 44,337 above 0.99 (88%). 49,869 features were alive, and tokens used 1.37 active features on average (median 1, at most 11; 83% used exactly one). It needed 85,100 steps and 47 hours. Codes went from about 25,000 active features per token to 1.37 while only about 400 features died. This gradual sparsification, one token at a time, is the contrast with TopK's abrupt drops. The unrecovered 7% lie in crowded regions of the embedding space, where one feature settles between two or three similar tokens. Experiment 6 makes this precise: these are tokens a ReLU feature can isolate only through a narrow gap (see the margin table under Theory above).
 
@@ -341,5 +344,6 @@ The write-up's methodology section should give a brief overview of these details
 | 7 | TopK, annealed from 128 | 2,000 | 512 | 4,000 to 16,000 (extension: up to 128,000) | ½, 1, 2 | 1,024 to 4,096 (extension: up to 32,768) | T14 to T18 |
 | 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | $2V$: 10,000, 20,000, 40,000 | 1 | 1,024 at every size | Part 3a |
 | 9 | L1 ReLU, $\lambda$ = 1, 0.3, 0.1 (and 0.03 at 5,000) | 5,000, 10,000, 20,000 | 256 | $V$, $2V$, $4V$ (and $16V$) | 1 | 256, 512, 1,024 (and 4,096) at every size | Part 3b |
+| 10 | ReLU, $\lambda = 0$ (no penalty) | 2,000 | 256 | 32,768 | 1 | 4,194 | R10 |
 
 Experiments 8 and 9 both hold the epochs' worth fixed across sizes, because their step counts grow in proportion to $V$. A TopK feature gets gradient only when it is selected for a token in the minibatch, so the training each feature receives scales with epochs' worth, not with steps alone.
