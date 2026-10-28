@@ -280,3 +280,46 @@ The linear programme bounds $w$ by $\lvert w_i\rvert \le 1$ in each coordinate a
 
 - **115 tokens, margin 0.32 to 0.40.** They are well separated, just not along their own direction. Experiment 2 recovered 63 of them.
 - **57 tokens, margin about 0.037.** 56 of them never occur in the Wikipedia count, so they are probably unused tokens. Experiment 2 recovered 1 of them.
+
+## Appendix C: training setup (for the methodology section)
+
+The write-up's methodology section should give a brief overview of these details. This appendix records them in one place.
+
+### Common to every training run
+
+- **Data.** The rows of the GPT-2 Small input embedding table, or of a subvocabulary of its $V$ most frequent tokens. Frequency (in English Wikipedia) only decides which tokens make up a subvocabulary.
+- **Sampling.** Each minibatch is drawn uniformly at random from the vocabulary, with replacement. There is no frequency weighting: every token gets the same share of updates. A frequency-weighted toggle exists but was never used.
+- **Steps and epochs.** A step is one optimiser update on one minibatch. With $V$ tokens and batch size $B$, one epoch's worth of tokens goes by every $V/B$ steps. Sampling is with replacement, so these are not exact passes through the vocabulary. Every run sees each token hundreds to tens of thousands of times.
+- **Model.** $m = V$ features. Decoder rows of unit norm, kept so by removing the gradient component along each row before the update and renormalising after it. No decoder bias. Initialisation: random Gaussian decoder rows, the encoder a copy of the decoder, zero encoder bias. No information from the embeddings is used.
+- **Optimiser.** Adam with default betas and epsilon, and a constant learning rate. The base rate ("the Gao rate") is $2\times10^{-4}/\sqrt{m/2^{14}}$, so it depends on the vocabulary size:
+
+| $m = V$ | 2,000 | 5,000 | 10,000 | 20,000 | 50,257 |
+|---|---|---|---|---|---|
+| Gao rate | $5.7\times10^{-4}$ | $3.6\times10^{-4}$ | $2.6\times10^{-4}$ | $1.8\times10^{-4}$ | $1.1\times10^{-4}$ |
+
+- **Training length** is measured in two ways. *Epochs' worth*: steps × $B$ / $V$. *Gao-rate steps*: steps × (learning rate / Gao rate). Progress depends mainly on Gao-rate steps (Experiments 4 and 7).
+- **Evaluation.** Over every token of the vocabulary, weighted equally. A token is recovered if some decoder row is its mutual nearest neighbour at cosine above 0.9 (and 0.99). A feature is alive if it is active on at least one token. A feature is active on a token if its coefficient is positive.
+- **Seeds.** One seed (0) per run, except the Experiment 7 extension (seeds 0, 1 and 2 at two lengths).
+- **Hardware.** Full-scale runs and Experiments 7 to 9 ran on the laptop (CPU, PyTorch 2.2.2). Pilots ran in a cloud sandbox. The same run gave 1,495 and 1,531 recovered tokens on the two machines, so results from different machines can differ by about 35 tokens on the subset.
+
+### Per experiment
+
+| Experiment | Model | $V$ | Batch size | Steps | Learning rate (× Gao) | Epochs' worth | Rows in the plan |
+|---|---|---|---|---|---|---|---|
+| Subset pilots, fixed $k$ | TopK, fixed $k$ | 2,000 | 512 | 3,000 | 1 | 768 | T3 |
+| Subset pilots, annealing and AuxK | TopK, annealed | 2,000 | 512 | 4,000 | 1 | 1,024 | T2, T4 to T10, T12, T13 |
+| Subset pilot, $\lambda$ sweep | L1 ReLU | 2,000 | 1,024 | 4,000 | 1 | 2,048 | Part 2 (earlier sweep) |
+| 1 | Top1 | 50,257 | 4,096 | 16,820 | 1 | 1,371 | T1 |
+| 2 | L1 ReLU, $\lambda = 0.3$ | 50,257 | 1,024 | 85,100 | 1 | 1,734 | R5 |
+| 3 | TopK, annealed from 128 | 50,257 | 4,096 | 15,980 | 1 | 1,302 | T11 |
+| 4 | L1 ReLU, $\lambda$ from 0.03 to 1 | 2,000 | 256, 1,024, 4,096 | 32,768, 8,192, 2,048 | ¼, 1, 4 | 4,194 in every cell ($2^{23}$ tokens) | R1 to R4 |
+| 5 | none (initialisation only) | 2,000 to 50,257 | | | | | Part 3a |
+| 6 | none (geometry only) | 2,000 and 50,257 | | | | | Appendix B |
+| 7 | TopK, annealed from 128 | 2,000 | 512 | 4,000 to 16,000 (extension: up to 128,000) | ½, 1, 2 | 1,024 to 4,096 (extension: up to 32,768) | T14 to T18 |
+| 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | 4,000 | 1 | 410, 205, 102 | Part 3a |
+| 9 | L1 ReLU, $\lambda$ = 1, 0.3, 0.1 (and 0.03 at 5,000) | 5,000, 10,000, 20,000 | 256 | $V$, $2V$, $4V$ (and $16V$) | 1 | 256, 512, 1,024 (and 4,096) at every size | Part 3b |
+
+Two consequences for reading the results:
+
+- **Experiment 8 sees far fewer epochs at the larger sizes.** Its runs use a fixed 4,000 steps, as on the subset, so the epochs' worth falls from 410 to 102 as $V$ grows. Its Gao-rate steps are the same at every size. Experiment 7 showed that more training raises TopK recovery, so this should be kept in mind when comparing sizes.
+- **Experiment 9 holds the epochs' worth fixed across sizes**, because its step counts grow in proportion to $V$.
