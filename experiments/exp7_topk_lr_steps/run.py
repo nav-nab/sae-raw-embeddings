@@ -8,11 +8,16 @@ One command runs everything:
 Every cell trains a TopK SAE with m = V on the 2,000 most frequent tokens, with
 k annealed by the schedule of row T10 of the write-up plan: k = 128, 64, 32, 16,
 8 and 4, sharing the first 40% of training equally, then k = 2 for 40% and
-k = 1 for the last 20%. Batch size 512, seed 0. The cells vary the total number
-of steps and the learning rate (as a multiple of the Gao rule):
+k = 1 for the last 20%. Batch size 512. The cells vary the total number of
+steps, the learning rate (as a multiple of the Gao rule) and the seed:
 
-    steps 4,000 at 1x (the T10 baseline), 8,000 at 1x, 16,000 at 1x,
-    steps 4,000 at 0.5x and at 2x.
+    original grid (seed 0): 4,000 steps at 1x (the T10 baseline), 8,000 and
+        16,000 at 1x, 4,000 at 0.5x and at 2x;
+    extension (2026-10-28): 8,000 and 16,000 steps at 1x with seeds 1 and 2,
+        and 32,000, 64,000 and 128,000 steps at 1x with seed 0.
+
+Running the script again after the original grid has finished adds the
+extension cells to the same grid and runs only those.
 
 Each cell is evaluated 40 times, so evaluations fall at the end of the k = 4
 stage (40%) and of the k = 2 stage (80%). Besides the usual fields, each
@@ -34,17 +39,23 @@ SCHEDULE = {"shape": "stages",
             "stages": [[k, 0.4 / 6] for k in (128, 64, 32, 16, 8, 4)] + [[2, 0.4], [1, 0.2]]}
 BATCH_SIZE = 512
 N_EVALS = 40
-CELLS_SPEC = [(4000, 1.0), (8000, 1.0), (16000, 1.0), (4000, 0.5), (4000, 2.0)]  # (steps, lr factor)
+# (steps, lr factor, seed). The first five are the original grid; the rest are the extension
+# (2026-10-28): two more seeds at 8,000 and 16,000 steps, and longer runs.
+CELLS_SPEC = [(4000, 1.0, 0), (8000, 1.0, 0), (16000, 1.0, 0), (4000, 0.5, 0), (4000, 2.0, 0),
+              (8000, 1.0, 1), (8000, 1.0, 2), (16000, 1.0, 1), (16000, 1.0, 2),
+              (32000, 1.0, 0), (64000, 1.0, 0), (128000, 1.0, 0)]
 
 
 def make_topk_cells(spec, schedule=SCHEDULE, batch_size=BATCH_SIZE, n_evals=N_EVALS):
     cells = []
-    for steps, lrf in spec:
+    for steps, lrf, *seed in spec:
+        seed = seed[0] if seed else 0
         if steps % n_evals:
             raise ValueError(f"{steps} steps do not divide into {n_evals} evaluations")
-        cells.append({"name": f"steps{steps}_lr{lrf:g}", "model": "topk", "schedule": schedule,
-                      "steps": steps, "eval_every": steps // n_evals, "lr_factor": lrf,
-                      "batch_size": batch_size})
+        name = f"steps{steps}_lr{lrf:g}" + (f"_seed{seed}" if seed else "")
+        cells.append({"name": name, "model": "topk", "schedule": schedule, "steps": steps,
+                      "eval_every": steps // n_evals, "lr_factor": lrf,
+                      "batch_size": batch_size, "seed": seed})
     return cells
 
 

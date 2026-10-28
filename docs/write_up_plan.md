@@ -61,10 +61,18 @@ Subset runs have $V = m = 2{,}000$ and 4,000 steps at batch size 512, unless mar
 | | | **$k$-annealing with AuxK** (as T10) | | | | | |
 | T12 | 🟡 | Standard AuxK, weight $\alpha$ = 1/32, 1/8 | Subset | 1 | 1,507; 1,516 | 1,476; 1,478 | 1,229; 1,235 |
 | T13 | 🟡 | AuxK targeting the whole token at $k = 1$, $\alpha$ = 1/32, 1/8, 1/2 | Subset | 1 | 1,525; 1,555; 1,555 | 1,503; 1,542; 1,538 | 1,258; 1,304; 1,302 |
+| | | **$k$-annealing with more training** (Experiment 7: as T10, varying steps and learning rate) | | | | | |
+| T14 | 🟡 | 4,000 steps at ½ the Gao rate | Subset | 1 | 1,479 | 1,426 (71%) | 1,187 |
+| T15 | 🟡 | 4,000 steps at the Gao rate (T10 rerun) | Subset | 1 | 1,515 | 1,495 (75%) | 1,241 |
+| T16 | 🟡 | 8,000 steps at the Gao rate | Subset | 1 | 1,537 | 1,529 (76%) | 1,266 |
+| T17 | 🟡 | 4,000 steps at 2 times the Gao rate | Subset | 1 | 1,553 | 1,555 (78%) | 1,300 |
+| T18 | 🟡 | 16,000 steps at the Gao rate | Subset | 1 | 1,589 | 1,568 (78%) | 1,333 |
 
 In every TopK run, every token uses exactly $k$ features at the end: no token has a zero code, and the fixed-$k$ runs fill all $k$ slots. So the mean, the median and the whole range are $k$, and there is no spread to report.
 
 No TopK run reaches 90%.
+
+**Noise.** All runs use one seed. T15 repeats T10 with the same seed and settings, but on another machine and with the later grid code; it recovered 1,495 tokens against 1,499. The same cell run in the sandbox gave 1,531. So differences of about 35 tokens between single runs can come from the machine alone.
 
 ### 1a. Failure modes
 
@@ -79,6 +87,7 @@ No TopK run reaches 90%.
 - **The shortfall is entirely features dying at the drops.** Alive features peak at 50,249 at $k = 128$. About 4,000 die at the drop to $k = 2$, and about 7,000 more (16%) at the drop to $k = 1$. On the subset, too, every schedule loses 15% to 20% at the final drop.
 - **Dead features almost never revive.** Over the 6,400 steps at $k = 2$, the alive count rose by only 244. After the drop to $k = 1$, it rose by 3. The one exception is a large $k$ at the start: $k_0 = 128$ revived all 3,349 features dead at initialisation within 800 steps.
 - **What matters most is the starting $k$ (T6 to T10).** On the subset, recovery rises with $k_0$ until nearly every feature is alive at the start. The shape of the low end changes it by at most about 40 tokens.
+- **More training helps, but less with each doubling (T14 to T18).** As for ReLU, progress depends on learning rate × steps: twice the steps (T16) and twice the learning rate (T17) give similar results. Per doubling of learning rate × steps, recovery rose by 69, then about 47, then about 26 tokens, to 1,568 (78%). More training helps in two ways. Fewer features die at the drop from $k = 4$ to $k = 2$, and more features are the top feature of some token at the end of the $k = 2$ stage, which is what decides survival at the drop to $k = 1$. That number rises mostly in the first quarter of the $k = 2$ stage and then levels off, which is why a longer $k = 2$ stage alone did not help. The drop to $k = 1$ still costs 18% to 20% of the alive features in every run. Whether the gains keep shrinking is being tested with longer runs and extra seeds (the Experiment 7 extension).
 - **The subset predicts full scale well.** The same schedule recovered 75% of the subset (T10) and 70% of the full table (T11).
 
 ## Part 2: ReLU SAEs with an L1 penalty
@@ -186,13 +195,13 @@ The geometry of the embeddings barely changes across these sizes, so any change 
 
 ## Next experiments
 
-Three experiments are outstanding. Scripts for all three are written and checked, and they run on the laptop over two nights.
+Experiments 7, 8 and 9 have run (2026-10-26 to 28). Experiment 7's results are in Part 1; Experiments 8 and 9 are still to be analysed. One run is outstanding:
 
-1. **Experiment 7: TopK with more training and other learning rates** (Part 1, `docs/experiment_7_topk_lr_steps.md`). The best subset schedule (T10) at 2 and 4 times the steps, and at half and twice the learning rate. It tests whether learning rate × steps, the main lever for ReLU, reduces the features TopK loses at the drop to $k = 1$. Night 1, about 1 hour.
-2. **Experiment 8: TopK annealing at intermediate sizes** (Part 3a, `docs/experiment_8_topk_sizes.md`). The 5,000, 10,000 and 20,000 most frequent tokens, starting at $k_0$ = 42, 55 and 71, which leave 93% of features alive at initialisation. It tests whether matching the share alive at the start also matches recovery at the end. Night 1, under 1 hour.
-3. **Experiment 9: ReLU SAEs at intermediate sizes** (Part 3b, `docs/experiment_9_relu_sizes.md`). The same sizes, with $\lambda$ = 0.1, 0.3 and 1 at each size and 0.03 at 5,000, at batch size 256 and the Gao rate. It measures how the training needed and the best $\lambda$ change with $V$. Runs keep their checkpoints so that they can be extended. 5,000 and 10,000 tokens on night 1 (about 4 hours), 20,000 on night 2 (about 12 to 14 hours).
+1. **Experiment 7 extension** (Part 1, `docs/experiment_7_topk_lr_steps.md`). Two more seeds at 8,000 and 16,000 steps, to measure the run-to-run spread, and single runs at 32,000, 64,000 and 128,000 steps, to see whether the gains from more training keep shrinking. About 6 hours on the laptop:
 
-`scripts/run_night1.py` runs everything for night 1 in one command.
+   ```
+   caffeinate -i python experiments/exp7_topk_lr_steps/run.py
+   ```
 
 ## Appendix A: why the embeddings minimise the L1 loss
 

@@ -14,7 +14,7 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 4** (plan `docs/experiment_4_relu_grid.md`, code `experiments/exp4_relu_grid/`, done): a grid of L1 ReLU SAEs on the 2,000-token subvocabulary over the L1 coefficient, the learning rate and the batch size (54 cells), with recovery measured along each run at 0.5 to 8 million tokens. It maps the ReLU failure modes for Part 1 of the write-up.
 - **Experiment 5** (`docs/experiment_5_alive_at_init.md`, code `experiments/exp5_alive_at_init/`, done): the share of TopK features alive at initialisation for vocabulary sizes from 2,000 to 50,257 and $k$ from 1 to 256, with no training. It gives the starting $k$ needed for a given share alive as the vocabulary grows (Part 3 of the write-up).
 - **Experiment 6** (`docs/experiment_6_hull_vertices.md`, code `experiments/exp6_hull_vertices/`, done): whether a ReLU encoder can output exact one-hot codes, which holds for a token exactly when its embedding is a vertex of the convex hull of the table. Result: every GPT-2 embedding is a vertex, and the margin of separation predicts which tokens Experiment 2 recovered.
-- **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, ready to run): the best TopK annealing schedule on the 2,000-token subvocabulary, with 2 and 4 times the training steps and with half and twice the learning rate, to see whether either reduces the features lost at the drop to $k = 1$.
+- **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, done; extension ready to run): the best TopK annealing schedule on the 2,000-token subvocabulary, with more training steps and with half and twice the learning rate. Result: progress depends on learning rate × steps, with smaller gains at each doubling (75% to 78% recovered). The extension adds seeds and runs of up to 128,000 steps.
 - **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, ready to run): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive (Part 3a of the write-up).
 - **Experiment 9** (`docs/experiment_9_relu_sizes.md`, code `experiments/exp9_relu_sizes/`, ready to run): L1 ReLU SAEs at the same sizes and several values of $\lambda$, to see how the training needed and the best $\lambda$ change with vocabulary size (Part 3b). Runs keep their checkpoints so that they can be extended.
 
@@ -168,9 +168,10 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 5: alive at initialisation by vocabulary size
 - [x] Experiment 6: one-hot codes and convex-hull vertices
 - [x] Experiment 7: script written
-- [ ] Experiment 7 run
+- [x] Experiment 7 run (first five cells)
+- [ ] Experiment 7 extension (seeds 1 and 2 at 8,000 and 16,000 steps; 32,000 to 128,000 steps)
 - [x] Experiments 8 and 9: scripts written
-- [ ] Experiment 8 run, and Experiment 9 at 5,000 and 10,000 tokens (night 1)
-- [ ] Experiment 9 at 20,000 tokens (night 2)
+- [x] Experiment 8 run, and Experiment 9 at 5,000 and 10,000 tokens (night 1)
+- [x] Experiment 9 at 20,000 tokens (night 2)
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
 - [x] Experiment 2 full run (85,100 steps)

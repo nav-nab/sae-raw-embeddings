@@ -62,7 +62,7 @@ SUMMARY_FIELDS = ("cell", "l1_coef", "lr_factor", "lr", "batch_size", "tokens_m"
 STEPPED_SUMMARY_FIELDS = ("cell", "V", "model", "l1_coef", "lr_factor", "lr", "batch_size",
                           "steps", "step", "k", "n_alive", "n_top1", "mean_l0", "median_l0",
                           "max_l0", "share_l0_1", "rel_loss", "n_recovered_cos0.9",
-                          "n_recovered_cos0.99")
+                          "n_recovered_cos0.99", "seed")
 
 
 def make_cells(l1_coefs, lr_factors, batch_sizes):
@@ -202,6 +202,9 @@ def run_grid(name, description, default_dir, cells, argv=None, eval_extra=recove
         grid = _new_grid(name, args, cells, E, log)
         grid_dir.mkdir(parents=True, exist_ok=True)
         grid_path.write_text(json.dumps(grid, indent=2))
+    else:
+        _add_new_cells(grid, cells, E, log)
+        grid_path.write_text(json.dumps(grid, indent=2))
     if args.extend:
         _apply_extensions(grid, grid_dir, args.extend, log)
 
@@ -233,7 +236,7 @@ def run_grid(name, description, default_dir, cells, argv=None, eval_extra=recove
         model_kw = ({"model": "topk", "schedule": cell["schedule"]} if is_topk(cell)
                     else {"model": "l1", "l1_coef": cell["l1_coef"]})
         _, history, finished = train(
-            E, steps=steps, batch_size=cell["batch_size"], lr=lr, seed=grid["seed"],
+            E, steps=steps, batch_size=cell["batch_size"], lr=lr, seed=cell_seed(cell, grid),
             eval_every=every, device=grid["device"],
             run_dir=cell_dir, checkpoint_every=60 * grid["checkpoint_minutes"],
             heartbeat_every=grid["heartbeat_seconds"], extra_eta_seconds=later,
@@ -246,13 +249,13 @@ def run_grid(name, description, default_dir, cells, argv=None, eval_extra=recove
         if not cell.get("keep_checkpoint"):
             for name_ in (CHECKPOINT_FILE, INIT_FILE):
                 (cell_dir / name_).unlink(missing_ok=True)
-        _write_summary(grid_dir, cells)
+        _write_summary(grid_dir, cells, grid)
         last = rows[-1]
         log(f"{prefix}done: {last['n_recovered_cos0.9']:,} tokens recovered at cosine > 0.9 "
             f"and {last['n_recovered_cos0.99']:,} at > 0.99, {last['n_alive']:,} features "
             f"alive, {last['mean_l0']:.3g} active per token.")
 
-    _write_summary(grid_dir, cells)
+    _write_summary(grid_dir, cells, grid)
     log(f"Grid finished. Summary in {grid_dir / SUMMARY_FILE}. At the end of each cell:")
     for cell in cells:
         last = json.loads((_cell_dir(grid_dir, cell) / RESULT_FILE).read_text())[-1]
@@ -260,6 +263,28 @@ def run_grid(name, description, default_dir, cells, argv=None, eval_extra=recove
             f"{last['n_recovered_cos0.99']:>6,} (> 0.99); alive {last['n_alive']:>6,}; "
             f"active per token {last['mean_l0']:.3g}")
     return grid
+
+
+def cell_seed(cell, grid):
+    """A cell's seed: its own if given, else the grid's."""
+    return cell.get("seed", grid["seed"])
+
+
+def _add_new_cells(grid, cells, E, log):
+    """Append to a saved grid the cells of this script that it does not have yet.
+
+    Saved cells keep their saved settings. This is how a finished grid is
+    extended with more cells: add them to the script and run it again.
+    """
+    known = {c["name"] for c in grid["cells"]}
+    new = [c for c in cells if c["name"] not in known]
+    if not new:
+        return
+    for cell in new:
+        cell_steps(cell, grid["max_tokens_m"], grid["eval_tokens_m"])
+    log(f"Adding {len(new)} new cells to the grid: " + ", ".join(c["name"] for c in new) + ".")
+    grid["cells"].extend(new)
+    _time_cells(grid, new, E, log)
 
 
 def _new_grid(name, args, cells, E, log):
@@ -273,30 +298,44 @@ def _new_grid(name, args, cells, E, log):
             "cells": cells, "started": time.strftime("%Y-%m-%d %H:%M")}
     for cell in cells:
         cell_steps(cell, args.max_tokens_m, args.eval_tokens_m)  # check the token counts
-    log(f"Timing steps on {V:,} tokens ...")
     grid["step_seconds"], grid["step_seconds_by_k"] = {}, {}
-    eval_s = None
-    for b in sorted({c["batch_size"] for c in cells if not is_topk(c)}):
+    _time_cells(grid, cells, E, log)
+    return grid
+
+
+def _time_cells(grid, cells, E, log):
+    """Measure the step times the given cells need and the grid does not have yet."""
+    V, device = E.shape[0], grid["device"]
+    eval_s = grid.get("eval_seconds")
+    l1_batches = sorted({c["batch_size"] for c in cells if not is_topk(c)} -
+                        {int(b) for b in grid["step_seconds"]})
+    topk_needs = {}
+    for c in cells:
+        if is_topk(c):
+            have = grid["step_seconds_by_k"].get(str(c["batch_size"]), {})
+            topk_needs.setdefault(c["batch_size"], set()).update(
+                k for k in schedule_ks(c["schedule"]) if str(k) not in have)
+    topk_needs = {b: ks for b, ks in topk_needs.items() if ks}
+    if not l1_batches and not topk_needs and eval_s is not None:
+        return
+    log(f"Timing steps on {V:,} tokens ...")
+    for b in l1_batches:
         l1 = next(c["l1_coef"] for c in cells if not is_topk(c))
         step_s, ev = time_training(E, b, model="l1", l1_coef=l1,
-                                   device=args.device, evaluate=eval_s is None)
+                                   device=device, evaluate=eval_s is None)
         eval_s = ev if ev is not None else eval_s
         grid["step_seconds"][str(b)] = round(step_s, 4)
         log(f"  batch size {b}: {step_s:.3f} s per step")
-    for b in sorted({c["batch_size"] for c in cells if is_topk(c)}):
-        ks = sorted({k for c in cells if is_topk(c) and c["batch_size"] == b
-                     for k in schedule_ks(c["schedule"])}, reverse=True)
-        grid["step_seconds_by_k"][str(b)] = {}
-        for k in ks:
-            step_s, ev = time_training(E, b, model="topk", k=k, device=args.device,
+    for b, ks in sorted(topk_needs.items()):
+        by_k = grid["step_seconds_by_k"].setdefault(str(b), {})
+        for k in sorted(ks, reverse=True):
+            step_s, ev = time_training(E, b, model="topk", k=k, device=device,
                                        evaluate=eval_s is None)
             eval_s = ev if ev is not None else eval_s
-            grid["step_seconds_by_k"][str(b)][str(k)] = round(step_s, 4)
-        log(f"  batch size {b}, TopK: " + ", ".join(
-            f"k={k} {s:.3f} s" for k, s in grid["step_seconds_by_k"][str(b)].items())
+            by_k[str(k)] = round(step_s, 4)
+        log(f"  batch size {b}, TopK: " + ", ".join(f"k={k} {s:.3f} s" for k, s in by_k.items())
             + " per step")
     grid["eval_seconds"] = round(eval_s, 2)
-    return grid
 
 
 def run_grids(name, description, default_root, cells_by_size, argv=None,
@@ -357,7 +396,8 @@ def _cell_rows(cell, lr, history, grid):
         return [{"cell": cell["name"], "V": grid["V"], "model": cell.get("model", "l1"),
                  "l1_coef": cell.get("l1_coef"), "lr_factor": cell["lr_factor"], "lr": lr,
                  "batch_size": cell["batch_size"], "steps": cell["steps"],
-                 **{k: rec.get(k) for k in STEPPED_SUMMARY_FIELDS[8:]}} for rec in history]
+                 **{k: rec.get(k) for k in STEPPED_SUMMARY_FIELDS[8:-1]},
+                 "seed": cell_seed(cell, grid)} for rec in history]
     rows = []
     for rec in history:
         tokens_m = rec["step"] * cell["batch_size"] / TOKEN_UNIT
@@ -377,12 +417,13 @@ def _is_power_of_two(n):
     return n > 0 and n & (n - 1) == 0
 
 
-def _write_summary(grid_dir, cells):
+def _write_summary(grid_dir, cells, grid):
     rows = []
     for cell in cells:
         path = _cell_dir(grid_dir, cell) / RESULT_FILE
         if path.exists():
-            rows.extend(json.loads(path.read_text()))
+            rows.extend({"seed": cell_seed(cell, grid), **row}
+                        for row in json.loads(path.read_text()))
     fields = STEPPED_SUMMARY_FIELDS if any(map(is_stepped, cells)) else SUMMARY_FIELDS
     with open(Path(grid_dir) / SUMMARY_FILE, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")

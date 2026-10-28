@@ -138,3 +138,36 @@ def test_run_grids_over_sizes_then_extend_a_cell(tmp_path):
     r = subprocess.run(base + ["--sizes", "30", "--extend", "nope", "50"], capture_output=True,
                        text=True, cwd=REPO, timeout=300)
     assert r.returncode != 0 and "no cell named" in r.stderr
+
+
+def test_new_cells_are_added_to_a_finished_grid_with_their_own_seeds(tmp_path):
+    _fake_data(tmp_path / "data")
+    exp7 = REPO / "experiments" / "exp7_topk_lr_steps" / "run.py"
+    def script(spec):
+        path = tmp_path / "grid7.py"
+        path.write_text(
+            "import importlib.util, sys\n"
+            f"spec = importlib.util.spec_from_file_location('exp7', {str(exp7)!r})\n"
+            "exp7 = importlib.util.module_from_spec(spec); spec.loader.exec_module(exp7)\n"
+            "from sae_raw.grid import run_grid\n"
+            "sched = {'shape': 'stages', 'stages': [[8, 0.4], [2, 0.4], [1, 0.2]]}\n"
+            f"cells = exp7.make_topk_cells({spec!r}, schedule=sched, batch_size=16, n_evals=4)\n"
+            "run_grid('t', 't', 'unused', cells, argv=sys.argv[1:], eval_extra=exp7.eval_extra)\n")
+        return [sys.executable, str(path), "--data-dir", str(tmp_path / "data"),
+                "--grid-dir", str(tmp_path / "grid"), "--subset", "60",
+                "--heartbeat-seconds", "0"]
+    r = subprocess.run(script([(20, 1.0)]), capture_output=True, text=True, cwd=REPO,
+                       timeout=300)
+    assert r.returncode == 0, r.stderr
+    r = subprocess.run(script([(20, 1.0, 0), (20, 1.0, 1), (40, 1.0, 0)]),
+                       capture_output=True, text=True, cwd=REPO, timeout=300)
+    assert r.returncode == 0, r.stderr
+    assert "Adding 2 new cells" in r.stdout and "1 already done" in r.stdout
+    grid = tmp_path / "grid"
+    seed0 = json.loads((grid / "steps20_lr1" / "result.json").read_text())
+    seed1 = json.loads((grid / "steps20_lr1_seed1" / "result.json").read_text())
+    assert seed1[-1]["seed"] == 1 and seed0[-1]["step"] == seed1[-1]["step"] == 20
+    assert seed0[-1]["rel_loss"] != seed1[-1]["rel_loss"]  # a different seed, a different run
+    summary = (grid / "summary.csv").read_text().splitlines()
+    assert summary[0].endswith(",seed") and len(summary) == 1 + 5 + 5 + 5
+    assert all(line.endswith(",0") for line in summary[1:6])  # old rows get the grid's seed
