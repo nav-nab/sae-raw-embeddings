@@ -15,7 +15,7 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 5** (`docs/experiment_5_alive_at_init.md`, code `experiments/exp5_alive_at_init/`, done): the share of TopK features alive at initialisation for vocabulary sizes from 2,000 to 50,257 and $k$ from 1 to 256, with no training. It gives the starting $k$ needed for a given share alive as the vocabulary grows (Part 3 of the write-up).
 - **Experiment 6** (`docs/experiment_6_hull_vertices.md`, code `experiments/exp6_hull_vertices/`, done): whether a ReLU encoder can output exact one-hot codes, which holds for a token exactly when its embedding is a vertex of the convex hull of the table. Result: every GPT-2 embedding is a vertex, and the margin of separation predicts which tokens Experiment 2 recovered.
 - **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, done; extension ready to run): the best TopK annealing schedule on the 2,000-token subvocabulary, with more training steps and with half and twice the learning rate. Result: progress depends on learning rate × steps, with smaller gains at each doubling (75% to 78% recovered). The extension adds seeds and runs of up to 128,000 steps.
-- **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, ready to run): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive (Part 3a of the write-up).
+- **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, ready to run): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive, with $2V$ steps so that every size gets the same training per token (Part 3a of the write-up).
 - **Experiment 9** (`docs/experiment_9_relu_sizes.md`, code `experiments/exp9_relu_sizes/`, ready to run): L1 ReLU SAEs at the same sizes and several values of $\lambda$, to see how the training needed and the best $\lambda$ change with vocabulary size (Part 3b). Runs keep their checkpoints so that they can be extended.
 
 `docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
@@ -171,7 +171,8 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 7 run (first five cells)
 - [ ] Experiment 7 extension (seeds 1 and 2 at 8,000 and 16,000 steps; 32,000 to 128,000 steps)
 - [x] Experiments 8 and 9: scripts written
-- [x] Experiment 8 run, and Experiment 9 at 5,000 and 10,000 tokens (night 1)
+- [ ] Experiment 8 run
+- [x] Experiment 9 at 5,000 and 10,000 tokens (night 1)
 - [x] Experiment 9 at 20,000 tokens (night 2)
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
 - [x] Experiment 2 full run (85,100 steps)

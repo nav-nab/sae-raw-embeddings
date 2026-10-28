@@ -10,9 +10,12 @@ on the V most frequent tokens. k is annealed with the shape of row T10 of the
 write-up plan, starting from the k0 that leaves 93% of features alive at
 initialisation (Experiment 5): 42, 55 and 71. The first 40% of training is
 shared equally by k0 and the powers of 2 below it down to 4, then k = 2 for
-40% and k = 1 for the last 20%. Batch size 512, the Gao learning rate, 4,000
-steps, seed 0, 40 evaluations. Each evaluation also records n_top1, the
-number of features that would survive a drop to k = 1 at that point.
+40% and k = 1 for the last 20%. Batch size 512, the Gao learning rate, seed 0,
+40 evaluations. Each run has 2V steps (10,000, 20,000 and 40,000), so that
+every size gets the same training per token as the subset runs: 1,024 epochs'
+worth, as for 4,000 steps on 2,000 tokens. Each evaluation also records
+n_top1, the number of features that would survive a drop to k = 1 at that
+point.
 
 --sizes runs only some of the sizes, for example --sizes 5000 10000.
 
@@ -28,7 +31,7 @@ from sae_raw.evaluation import n_top1, recovery_fields
 from sae_raw.grid import run_grids
 
 K0_BY_SIZE = {5000: 42, 10000: 55, 20000: 71}  # 93% alive at initialisation (Experiment 5)
-STEPS = 4000
+STEPS_PER_TOKEN = 2  # 2V steps: 1,024 epochs' worth at batch size 512, as on the subset
 BATCH_SIZE = 512
 N_EVALS = 40
 
@@ -43,7 +46,10 @@ def matched_schedule(k0):
     return {"shape": "stages", "stages": [[k, 0.4 / len(ks)] for k in ks] + [[2, 0.4], [1, 0.2]]}
 
 
-def cells_for(V, k0, steps=STEPS, batch_size=BATCH_SIZE, n_evals=N_EVALS):
+def cells_for(V, k0, steps=None, batch_size=BATCH_SIZE, n_evals=N_EVALS):
+    steps = STEPS_PER_TOKEN * V if steps is None else steps
+    if steps % n_evals:
+        raise ValueError(f"{steps} steps do not divide into {n_evals} evaluations")
     return [{"name": f"V{V}_k0_{k0}", "model": "topk", "schedule": matched_schedule(k0),
              "steps": steps, "eval_every": steps // n_evals, "lr_factor": 1.0,
              "batch_size": batch_size}]

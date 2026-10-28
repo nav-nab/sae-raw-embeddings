@@ -195,13 +195,15 @@ The geometry of the embeddings barely changes across these sizes, so any change 
 
 ## Next experiments
 
-Experiments 7, 8 and 9 have run (2026-10-26 to 28). Experiment 7's results are in Part 1; Experiments 8 and 9 are still to be analysed. One run is outstanding:
+Experiments 7 and 9 have run (2026-10-26 to 28). Experiment 7's results are in Part 1; Experiment 9 is still to be analysed. Two runs are outstanding:
 
-1. **Experiment 7 extension** (Part 1, `docs/experiment_7_topk_lr_steps.md`). Two more seeds at 8,000 and 16,000 steps, to measure the run-to-run spread, and single runs at 32,000, 64,000 and 128,000 steps, to see whether the gains from more training keep shrinking. About 6 hours on the laptop:
+1. **Experiment 7 extension** (Part 1, `docs/experiment_7_topk_lr_steps.md`). Two more seeds at 8,000 and 16,000 steps, to measure the run-to-run spread, and single runs at 32,000, 64,000 and 128,000 steps, to see whether the gains from more training keep shrinking. About 6 hours on the laptop.
+2. **Experiment 8: TopK annealing at intermediate sizes** (Part 3a, `docs/experiment_8_topk_sizes.md`). The 5,000, 10,000 and 20,000 most frequent tokens, starting at $k_0$ = 42, 55 and 71, which leave 93% of features alive at initialisation, with $2V$ steps so that every size gets 1,024 epochs' worth of training. It tests whether matching the share alive at the start also matches recovery at the end. About 5 hours on the laptop.
 
-   ```
-   caffeinate -i python experiments/exp7_topk_lr_steps/run.py
-   ```
+```
+caffeinate -i python experiments/exp7_topk_lr_steps/run.py
+caffeinate -i python experiments/exp8_topk_sizes/run.py
+```
 
 ## Appendix A: why the embeddings minimise the L1 loss
 
@@ -316,10 +318,7 @@ The write-up's methodology section should give a brief overview of these details
 | 5 | none (initialisation only) | 2,000 to 50,257 | | | | | Part 3a |
 | 6 | none (geometry only) | 2,000 and 50,257 | | | | | Appendix B |
 | 7 | TopK, annealed from 128 | 2,000 | 512 | 4,000 to 16,000 (extension: up to 128,000) | ½, 1, 2 | 1,024 to 4,096 (extension: up to 32,768) | T14 to T18 |
-| 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | 4,000 | 1 | 410, 205, 102 | Part 3a |
+| 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | $2V$: 10,000, 20,000, 40,000 | 1 | 1,024 at every size | Part 3a |
 | 9 | L1 ReLU, $\lambda$ = 1, 0.3, 0.1 (and 0.03 at 5,000) | 5,000, 10,000, 20,000 | 256 | $V$, $2V$, $4V$ (and $16V$) | 1 | 256, 512, 1,024 (and 4,096) at every size | Part 3b |
 
-Two consequences for reading the results:
-
-- **Experiment 8 sees far fewer epochs at the larger sizes.** Its runs use a fixed 4,000 steps, as on the subset, so the epochs' worth falls from 410 to 102 as $V$ grows. Its Gao-rate steps are the same at every size. Experiment 7 showed that more training raises TopK recovery, so this should be kept in mind when comparing sizes.
-- **Experiment 9 holds the epochs' worth fixed across sizes**, because its step counts grow in proportion to $V$.
+Experiments 8 and 9 both hold the epochs' worth fixed across sizes, because their step counts grow in proportion to $V$. A TopK feature gets gradient only when it is selected for a token in the minibatch, so the training each feature receives scales with epochs' worth, not with steps alone.

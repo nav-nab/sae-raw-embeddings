@@ -99,6 +99,10 @@ def test_matched_schedule_starts_at_k0_and_halves_from_the_power_of_two_below():
     t10 = _load("exp7", "experiments/exp7_topk_lr_steps/run.py").SCHEDULE
     assert exp8.matched_schedule(128) == t10
     assert abs(sum(f for _, f in exp8.matched_schedule(55)["stages"]) - 1) < 1e-12
+    # 2V steps, so 1,024 epochs' worth at batch size 512 at every size.
+    for V, k0 in exp8.K0_BY_SIZE.items():
+        (cell,) = exp8.cells_for(V, k0)
+        assert cell["steps"] == 2 * V and cell["steps"] * cell["batch_size"] / V == 1024
 
 
 def test_run_grids_over_sizes_then_extend_a_cell(tmp_path):
