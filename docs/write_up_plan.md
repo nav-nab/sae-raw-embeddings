@@ -160,6 +160,13 @@ Two rules describe the successful region:
 
 **The penalty does all the work (Experiment 10, `docs/experiment_10_relu_no_penalty.md`).** As $\lambda$ falls, recovery rises, so one might ask whether $\lambda = 0$ does best of all. It does not: it recovers nothing (R10). With no penalty, every exact reconstruction has zero loss, so the bound of Appendix A no longer singles out the embeddings. The run reconstructs as well as the best penalised run (relative loss about 0.001), but with dense codes of about 670 features per token. Its decoder rows stay close to random: the median best cosine between a token and any decoder row rises only from 0.12 at initialisation to 0.16. So the trend holds only for $\lambda > 0$. As $\lambda \to 0$, the training needed to sparsify diverges, and at $\lambda = 0$ itself the loss no longer prefers the embeddings at all.
 
+**Interpretation: the penalty must be weak, but not infinitely weak, and the training budget sets how weak.** For any $\lambda > 0$, however small, the embeddings remain the minimiser of the loss (Appendix A). What shrinks as $\lambda$ falls is the force that pushes each code towards a single feature, so the time to sparsify grows, roughly as $\lambda^{-0.7}$. Only at $\lambda = 0$ exactly does the minimiser itself disappear (Experiment 10). The two sides of the trade-off are:
+
+- **Too strong:** features die before they find a token. This sets the upper limit, around $\lambda = 0.5$ at the Gao rate on the subset.
+- **Too weak:** codes do not become sparse within the training available.
+
+So the best $\lambda$ depends on the training budget. For a fixed number of steps, it is roughly the smallest $\lambda$ that still finishes sparsifying in that time. With unlimited training, a smaller $\lambda$ would keep doing better, right up to the discontinuity at zero.
+
 At full scale, Experiment 2 (R5: $\lambda = 0.3$, batch 1,024) recovered 46,590 tokens at cosine above 0.9 (93%) and 44,337 above 0.99 (88%). 49,869 features were alive, and tokens used 1.37 active features on average (median 1, at most 11; 83% used exactly one). It needed 85,100 steps and 47 hours. Codes went from about 25,000 active features per token to 1.37 while only about 400 features died. This gradual sparsification, one token at a time, is the contrast with TopK's abrupt drops. The unrecovered 7% lie in crowded regions of the embedding space, where one feature settles between two or three similar tokens. Experiment 6 makes this precise: these are tokens a ReLU feature can isolate only through a narrow gap (see the margin table under Theory above).
 
 ## Part 3: scaling laws
