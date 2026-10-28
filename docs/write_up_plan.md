@@ -231,9 +231,10 @@ Experiments 7 and 9 have run (2026-10-26 to 28). Their results are in Parts 1 an
 1. **Experiment 7 extension** (Part 1, `docs/experiment_7_topk_lr_steps.md`). Two more seeds at 8,000 and 16,000 steps, to measure the run-to-run spread, and single runs at 32,000, 64,000 and 128,000 steps, to see whether the gains from more training keep shrinking. About 6 hours on the laptop.
 2. **Experiment 8: TopK annealing at intermediate sizes** (Part 3a, `docs/experiment_8_topk_sizes.md`). The 5,000, 10,000 and 20,000 most frequent tokens, starting at $k_0$ = 42, 55 and 71, which leave 93% of features alive at initialisation, with $2V$ steps so that every size gets 1,024 epochs' worth of training. It tests whether matching the share alive at the start also matches recovery at the end. About 5 hours on the laptop.
 
+Both run with one command, one after the other, in about 11 hours:
+
 ```
-caffeinate -i python experiments/exp7_topk_lr_steps/run.py
-caffeinate -i python experiments/exp8_topk_sizes/run.py
+caffeinate -i python scripts/run_overnight.py
 ```
 
 ## Appendix A: why the embeddings minimise the L1 loss

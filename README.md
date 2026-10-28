@@ -55,7 +55,8 @@ experiments/
   exp10_relu_no_penalty/run.py  the lambda = 0 control (Experiment 10)
 scripts/
   prepare_data.py     prepare the data on its own (the experiment scripts also do this)
-  run_night1.py       runs Experiments 7, 8 and 9 (5,000 and 10,000 tokens) in one go
+  run_overnight.py    runs several experiments one after another, unattended (default:
+                      the outstanding runs)
 docs/
   experiment_1_top1.md         plan: how many dead Top1 features revive?
   experiment_1_results.md      results and interpretation of Experiment 1
@@ -101,7 +102,7 @@ caffeinate -i python experiments/exp8_topk_sizes/run.py
 caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 5000 10000
 ```
 
-`caffeinate -i python scripts/run_night1.py` runs the last three of these one after another, for an unattended night. Ctrl-C stops it without starting the later experiments, and running it again resumes. Night 2 is `caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 20000`.
+`caffeinate -i python scripts/run_overnight.py` runs the outstanding experiments one after another, for an unattended night: currently the Experiment 7 extension and then Experiment 8, about 11 hours on the laptop. Ctrl-C stops it without starting the later experiments, and running it again resumes. `--plan` chooses another sequence (see `--help`).
 
 Run the scripts from the repository root, since `data/` and `runs/` are relative paths. Run one experiment at a time: each one sizes itself to the whole machine, so two at once would each take about twice as long. `caffeinate -i` keeps the Mac awake. Each script does every step:
 
