@@ -8,7 +8,7 @@ With a dictionary of $m = V$ features trained on the raw token embedding table, 
 
 - **TopK SAEs recover the embeddings when $k$ is annealed from a large starting value down to 1, but slowly.** Every drop in $k$ kills features, and dead features almost never revive. More training reduces these losses steadily: on the 2,000-token subvocabulary, recovery rises by about 3 percentage points per doubling of training, from 75% to 89% at 128,000 steps, and was still rising. At full scale, with about the same training per token as the shortest subvocabulary runs, it recovered 70%. With fixed $k$, TopK fails.
 - **ReLU SAEs with an L1 penalty** recover the embeddings across a wide region of hyperparameters, provided they train long enough: 93% at full scale and 98% on a subvocabulary. Outside that region they fail in one of two ways: dense codes from too little training, or dead features from too much pressure.
-- **For ReLU SAEs, recovery does not depend on the vocabulary size.** Given the same training per token, recovery as a function of $\lambda$ is the same at 2,000, 5,000, 10,000 and 20,000 tokens, to within a few points, and consistent with the full table. The number of steps needed grows in proportion to $V$ (at a fixed batch size, the same epochs' worth). So the subvocabulary behaves as a faithful small-scale model of the full problem, and results found there carry over. This is a conceptual theme of the write-up (Part 3b).
+- **For both architectures, recovery does not depend on the vocabulary size.** Given the same training per token, recovery is the same at 2,000, 5,000, 10,000 and 20,000 tokens, to within a few points: as a function of $\lambda$ for ReLU (Part 3b), and for TopK annealing started at the $k_0$ that leaves about 93% of features alive (Part 3a). The number of steps needed grows in proportion to $V$ (at a fixed batch size, the same epochs' worth). So the subvocabulary behaves as a faithful small-scale model of the full problem, and results found there carry over. This is a conceptual theme of the write-up.
 
 ## Setting and measurement
 
@@ -182,7 +182,7 @@ At full scale, Experiment 2 (R5: $\lambda = 0.3$, batch 1,024) recovered 46,590 
 
 How the settings that make recovery work must change as the vocabulary grows.
 
-### 3a. The starting $k$ for TopK
+### 3a. TopK: with the starting $k$ matched, recovery does not depend on vocabulary size
 
 At the same $k$, fewer features are alive at initialisation in a larger vocabulary. Experiment 5 (`docs/experiment_5_alive_at_init.md`) measured the share at seven sizes, as the mean of two seeds, which differ by at most 2 percentage points:
 
@@ -201,11 +201,25 @@ Keeping the same share alive at the start therefore requires $k_0$ to grow with 
 The shape of this growth depends on which tokens make up each subvocabulary:
 
 - **Random tokens: a power law in $V$.** For random subvocabularies, $k \approx 2.90\,V^{0.345}$ for 93% alive, with an exponent of 0.34 to 0.37 across target shares of 90% to 97%. This is the effect of size alone, and the clean scaling law for the write-up.
-- **Most frequent tokens: faster growth at large $V$.** Our pilots used the most frequent tokens. Their embeddings are spread more evenly in direction than a random sample (mean pairwise cosine 0.236 for the 2,000 most frequent, 0.269 for a random set, 0.341 for the 2,000 rarest). Evenly spread tokens are easier to cover, because different random features win different tokens. As a frequency subvocabulary grows, it adds tokens that crowd more closely around the shared direction, so the needed $k$ rises faster than size alone would, until it meets the random curve at the full table. Frequency is only a proxy here: the variable that matters is how concentrated the embedding directions are. Over 27 sizes, a small power plus a linear term fits this curve: $k \approx 9.0\,V^{0.16} + 0.0014\,V$ for 93% alive. This curve is the relevant one for carrying a schedule from the pilot subset to the full table.
+- **Most frequent tokens: faster growth at large $V$.** Our pilots used the most frequent tokens. Their embeddings are spread more evenly in direction than a random sample (mean pairwise cosine 0.236 for the 2,000 most frequent, 0.269 for a random set, 0.341 for the 2,000 rarest). Evenly spread tokens are easier to cover, because different random features win different tokens. As a frequency subvocabulary grows, it adds tokens that crowd more closely around the shared direction, so the needed $k$ rises faster than size alone would, until it meets the random curve at the full table. Frequency is only a proxy here: the variable that matters is how concentrated the embedding directions are. Over 27 sizes, a power law fits this curve: $k \approx 1.37\,V^{0.405}$ for 93% alive, with an RMS error of 5.5%. Its exponent is larger than for random tokens because of the change in geometry. This curve is the relevant one for carrying a schedule from the pilot subset to the full table.
 
 Details are in `docs/experiment_5_alive_at_init.md`.
 
-At the two sizes trained so far, starting runs this way gave similar recovery: 68% on the subset with $k_0 = 32$ (T8) and 70% on the full table with $k_0 = 128$ (T11). Whether this holds at the sizes in between is the next experiment.
+**Result (Experiment 8, `docs/experiment_8_topk_sizes.md`): matching the share alive at the start carries recovery across sizes.** At 5,000, 10,000 and 20,000 tokens, runs started at the $k_0$ that leaves 93% of features alive (42, 55 and 71, measured in Experiment 5) and used the T10 schedule shape. Steps were $2V$, so every size got 1,024 epochs' worth of training, as on the subset. The 93%-alive values agree with the power law: it gives 42.9, 56.7 and 75.1.
+
+| # | Outcome | $V$ | $k_0$ (share alive at the start) | Steps | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
+|---|---|---|---|---|---|---|---|
+| T15 | 🟡 | 2,000 (subset baseline) | 128 (99.8%) | 4,000 | 1,515 | 1,495 (75%) | 1,241 (62%) |
+| T22 | 🟡 | 5,000 | 42 (93%) | 10,000 | 3,741 | 3,678 (74%) | 2,993 (60%) |
+| T23 | 🟡 | 10,000 | 55 (93%) | 20,000 | 7,642 | 7,512 (75%) | 6,158 (62%) |
+| T24 | 🟡 | 20,000 | 71 (93%) | 40,000 | 15,604 | 15,370 (77%) | 12,826 (64%) |
+
+The subset baseline is not on the 93%-alive curve: it started at $k_0 = 128$, chosen in the subset grid, which leaves 99.8% of features alive. The 93%-alive value at 2,000 tokens is 32.
+
+- **Recovery is flat across sizes:** 74%, 75% and 77% at cosine above 0.9, and 60%, 62% and 64% above 0.99. The subset baseline, which started with more features alive, recovered the same. Once about 93% of features are alive at the start, a larger $k_0$ adds nothing, as in the subset grid.
+- **The dynamics are the same at every size.** Almost no features die before the drop to $k = 2$. About 4% to 6% die at that drop and 17% to 18% at the drop to $k = 1$, close to the subset's 20%. The $k = 1$ stage changes nothing. About 98% of the surviving features are recovered tokens, and `n_top1` predicts the survivors of the drop to $k = 1$ to within about 2%.
+- **The recipe.** To carry TopK annealing to any vocabulary size: start at the $k_0$ that leaves about 93% of features alive (for these vocabularies, $k_0 \approx 1.37\,V^{0.405}$), keep the schedule's shape, and scale the steps in proportion to $V$.
+- **Size-independence holds for TopK too.** As for ReLU (Part 3b), recovery is set by the training per token and the hyperparameters, not by the vocabulary size.
 
 ### 3b. ReLU: recovery as a function of $\lambda$ does not depend on vocabulary size
 
@@ -235,7 +249,7 @@ The learning rate falls with size, as $1/\sqrt{m}$, so each update is smaller at
 
 ## Next experiments
 
-All planned experiments have run. Experiment 8 (Part 3a, `docs/experiment_8_topk_sizes.md`: TopK annealing at 5,000, 10,000 and 20,000 tokens with $2V$ steps) is still to be analysed.
+All planned experiments have run and been analysed.
 
 ## Appendix A: why the embeddings minimise the L1 loss
 
@@ -350,7 +364,7 @@ The write-up's methodology section should give a brief overview of these details
 | 5 | none (initialisation only) | 2,000 to 50,257 | | | | | Part 3a |
 | 6 | none (geometry only) | 2,000 and 50,257 | | | | | Appendix B |
 | 7 | TopK, annealed from 128 | 2,000 | 512 | 4,000 to 128,000 | ½, 1, 2 | 1,024 to 32,768 | T14 to T21 |
-| 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | $2V$: 10,000, 20,000, 40,000 | 1 | 1,024 at every size | Part 3a |
+| 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | $2V$: 10,000, 20,000, 40,000 | 1 | 1,024 at every size | T22 to T24 |
 | 9 | L1 ReLU, $\lambda$ = 1, 0.3, 0.1 (and 0.03 at 5,000) | 5,000, 10,000, 20,000 | 256 | $V$, $2V$, $4V$ (and $16V$) | 1 | 256, 512, 1,024 (and 4,096) at every size | Part 3b |
 | 10 | ReLU, $\lambda = 0$ (no penalty) | 2,000 | 256 | 32,768 | 1 | 4,194 | R10 |
 

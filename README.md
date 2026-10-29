@@ -15,7 +15,7 @@ Each experiment has a plan in `docs/` and its code in its own folder under `expe
 - **Experiment 5** (`docs/experiment_5_alive_at_init.md`, code `experiments/exp5_alive_at_init/`, done): the share of TopK features alive at initialisation for vocabulary sizes from 2,000 to 50,257 and $k$ from 1 to 256, with no training. It gives the starting $k$ needed for a given share alive as the vocabulary grows (Part 3 of the write-up).
 - **Experiment 6** (`docs/experiment_6_hull_vertices.md`, code `experiments/exp6_hull_vertices/`, done): whether a ReLU encoder can output exact one-hot codes, which holds for a token exactly when its embedding is a vertex of the convex hull of the table. Result: every GPT-2 embedding is a vertex, and the margin of separation predicts which tokens Experiment 2 recovered.
 - **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, done): the best TopK annealing schedule on the 2,000-token subvocabulary, with 4,000 to 128,000 training steps, half and twice the learning rate, and three seeds at two lengths. Result: progress depends on learning rate × steps, and recovery rises by about 3 points per doubling of training, from 75% to 89%, with no sign of levelling off.
-- **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, ready to run): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive, with $2V$ steps so that every size gets the same training per token (Part 3a of the write-up).
+- **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, done): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive, with $2V$ steps so that every size gets the same training per token (Part 3a of the write-up). Result: 74% to 77% recovered at every size, as on the subset.
 - **Experiment 9** (`docs/experiment_9_relu_sizes.md`, code `experiments/exp9_relu_sizes/`, done): L1 ReLU SAEs at 5,000, 10,000 and 20,000 tokens and several values of $\lambda$ (Part 3b). Result: with steps in proportion to $V$, recovery as a function of $\lambda$ is the same at every size, to within a few points. Runs keep their checkpoints so that they can be extended.
 - **Experiment 10** (`docs/experiment_10_relu_no_penalty.md`, code `experiments/exp10_relu_no_penalty/`, done): a control with no sparsity penalty ($\lambda = 0$) on the 2,000-token subvocabulary, otherwise as Experiment 4's best cell. Result: no token recovered; codes stay dense (about 670 active features per token).
 
@@ -175,7 +175,7 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 7 run (first five cells)
 - [x] Experiment 7 extension (seeds 1 and 2 at 8,000 and 16,000 steps; 32,000 to 128,000 steps)
 - [x] Experiments 8 and 9: scripts written
-- [ ] Experiment 8 run
+- [x] Experiment 8 run
 - [x] Experiment 10: the lambda = 0 control
 - [x] Experiment 9 at 5,000 and 10,000 tokens (night 1)
 - [x] Experiment 9 at 20,000 tokens (night 2)

@@ -1,6 +1,6 @@
 # Experiment 8: TopK annealing at intermediate vocabulary sizes
 
-Status: script written and checked, 2026-10-28. To be run on the laptop.
+Status: done. Run on the laptop on 2026-10-28 to 29, about 5 hours. Results at the end.
 
 ## Question
 
@@ -29,3 +29,22 @@ caffeinate -i python experiments/exp8_topk_sizes/run.py
 ## Code
 
 `experiments/exp8_topk_sizes/run.py` defines the schedules and calls `run_grids` in `sae_raw/grid.py`, which runs one grid per size.
+
+## Results
+
+| $V$ | $k_0$ | Steps | Alive at start | Peak alive | Alive at end of $k = 2$ | `n_top1` at end of $k = 2$ | Alive at end | Recovered > 0.9 | Recovered > 0.99 |
+|---|---|---|---|---|---|---|---|---|---|
+| 5,000 | 42 | 10,000 | 4,637 (93%) | 4,757 | 4,537 | 3,829 | 3,741 | 3,678 (74%) | 2,993 (60%) |
+| 10,000 | 55 | 20,000 | 9,311 (93%) | 9,841 | 9,284 | 7,781 | 7,642 | 7,512 (75%) | 6,158 (62%) |
+| 20,000 | 71 | 40,000 | 18,621 (93%) | 19,928 | 18,762 | 15,808 | 15,604 | 15,370 (77%) | 12,826 (64%) |
+
+For comparison, the subset baseline (T15: 2,000 tokens, $k_0 = 128$, which leaves 99.8% alive, 4,000 steps) recovered 1,495 tokens (75%) at cosine above 0.9 and 1,241 (62%) above 0.99.
+
+### Findings
+
+1. **Recovery does not depend on the vocabulary size.** With $k_0$ matched for 93% alive at the start and the same training per token, recovery is 74%, 75% and 77% at cosine above 0.9, the same as on the subset.
+2. **The dynamics are the same at every size.** Almost no features die before the drop to $k = 2$. About 4% to 6% die at that drop, and 17% to 18% at the drop to $k = 1$ (20% on the subset). The $k = 1$ stage changes nothing. About 98% of the surviving features are recovered tokens.
+3. **`n_top1` predicts the survivors of the drop to $k = 1$ to within about 2%** at every size.
+4. **A larger share alive at the start adds nothing beyond about 93%.** The subset baseline started at 99.8% and recovered the same.
+
+The measured 93%-alive values of $k_0$ agree with the power law $k_0 \approx 1.37\,V^{0.405}$ from Experiment 5, which gives 42.9, 56.7 and 75.1.

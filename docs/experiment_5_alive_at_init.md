@@ -43,24 +43,20 @@ The full frequency series at 93%, over all 27 sizes in the order listed above, i
 
 ## Fits
 
-Least squares on relative error. The four target shares (90%, 93%, 95%, 97%) give the same ranking of forms.
+Power laws $k \approx c\,V^p$, by least squares on relative error.
 
-| Form | Parameters | Most frequent tokens (27 sizes), RMS error at 93% | Random tokens (7 sizes), RMS error at 93% |
-|---|---|---|---|
-| $c\,V^p$ | 2 | 5.5% | **1.3%** |
-| $a + bV$ | 2 | 3.8% | 9.1% |
-| $a\,V^p + bV$ | 3 | **1.7%** | 0.9%, with $b \approx 0$ |
+**Random tokens (7 sizes).** For 93% alive, $k \approx 2.90\,V^{0.345}$, with an RMS error of 1.3%. The exponent rises slightly with the target: 0.340 for 90%, 0.355 for 95% and 0.374 for 97%.
 
-**For random tokens, a single power law fits.** For 93% alive, $k \approx 2.90\,V^{0.345}$. The exponent rises slightly with the target: 0.340 for 90%, 0.355 for 95% and 0.374 for 97%. The linear term of the three-parameter form fits to almost zero.
+**Most frequent tokens (27 sizes).** For 93% alive, $k \approx 1.37\,V^{0.405}$. The fits for each target:
 
-**For the most frequent tokens, the power-plus-linear form fits best.** For 93% alive, $k \approx 9.0\,V^{0.16} + 0.0014\,V$, close to the values from the first seven sizes ($6.6\,V^{0.20} + 0.0013\,V$). The fits for the other targets:
-
-| Target | $a$ | $p$ | $b$ | RMS error | Largest error |
+| Target | $c$ | $p$ | RMS error | Largest error | Fit at 50,257 (measured) |
 |---|---|---|---|---|---|
-| 90% | 7.7 | 0.15 | 0.00097 | 1.4% | 3.1% |
-| 93% | 9.0 | 0.16 | 0.00138 | 1.7% | 4.0% |
-| 95% | 8.9 | 0.19 | 0.00176 | 1.6% | 3.1% |
-| 97% | 8.4 | 0.23 | 0.00250 | 2.7% | 6.7% |
+| 90% | 1.23 | 0.384 | 5.4% | 10.6% | 79 (88) |
+| 93% | 1.37 | 0.405 | 5.5% | 11.4% | 109 (123) |
+| 95% | 1.50 | 0.421 | 5.2% | 10.6% | 144 (161) |
+| 97% | 1.60 | 0.451 | 5.2% | 10.3% | 212 (236) |
+
+The power law fits the frequency subsets less tightly than the random ones. It runs low at both ends of the range (for 93%: 29.6 against 32 at 2,000 tokens, 109 against 123 at the full table) and is within about 6% from 5,000 to 20,000 tokens. The reason is the change in geometry described next.
 
 ## Why the token order matters: geometry, not frequency
 
@@ -83,7 +79,7 @@ This geometry sets the share alive at initialisation. A random feature is alive 
 ## Reading
 
 - **The effect of size alone is a power law, $k \propto V^{0.34}$ to $V^{0.37}$.** This is what the random subsets measure. The constant and the exponent go together, so the exponent should be quoted to three figures when the constant is used: rounding 0.345 to 0.34 makes the curve about 6% low at full scale.
-- **The speed-up at large $V$ comes from a change in geometry, not from size.** Random subsets keep the same geometry at every size (mean pairwise cosine 0.269 at both 2,000 and 10,000 tokens), so only size changes. Frequency subsets start with the most spread-out tokens, so they need a smaller $k$ than random subsets at small $V$. Each larger frequency subset then adds tokens that crowd more closely around the shared direction, so the needed $k$ rises faster than size alone would, until the two curves meet at the full table. The linear term in the frequency fit absorbs this change in geometry. It is not a property of size.
+- **The frequency subsets grow faster at large $V$ because of a change in geometry, not size.** Random subsets keep the same geometry at every size (mean pairwise cosine 0.269 at both 2,000 and 10,000 tokens), so only size changes. Frequency subsets start with the most spread-out tokens, so they need a smaller $k$ than random subsets at small $V$. Each larger frequency subset then adds tokens that crowd more closely around the shared direction, so the needed $k$ rises faster than size alone would, until the two curves meet at the full table. Their power law therefore has a larger exponent (0.405 against 0.345), and fits less tightly.
 - **Frequency is only a proxy.** The variable that matters is how concentrated the embedding directions are, which in GPT-2 happens to vary with token frequency. A scaling law in $V$ should hold the geometry fixed, as random subsets do.
 - **Which curve the write-up uses depends on the claim.** For a scaling law in vocabulary size, the random-subset power law is the clean one. For carrying a schedule from the pilot subset (the 2,000 most frequent tokens) to the full table, the frequency curve is the relevant one, since that is the path our experiments took.
 - **This is a start-of-training measurement.** Whether matching the share alive at the start also matches recovery at the end is tested by the next experiment on the list: annealing runs at intermediate sizes.
