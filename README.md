@@ -146,7 +146,7 @@ The final analysis recomputes revival from `init.pt` and `model.pt`. It also mea
 
 ## Model choices
 
-- **Shared:** random unit-norm Gaussian decoder rows, encoder copied from the decoder, encoder bias zero. No information from the embeddings is used, and all models start from identical parameters for the same seed. The gradient component along each decoder row is removed before each optimiser step, and rows are renormalised after it. Adam with default betas and epsilon, one run per seed, no sweep.
+- **Shared:** random unit-norm Gaussian decoder rows, encoder taken to be the transpose of the decoder, encoder bias zero. No information from the embeddings is used, and all models start from identical parameters for the same seed. The gradient component along each decoder row is removed before each optimiser step, and rows are renormalised after it. Adam with default betas and epsilon, one run per seed, no sweep.
 - **Top1** (`Top1SAE`, Experiment 1): the largest ReLU pre-activation wins, and its score is the coefficient. If no pre-activation is positive, the code and the reconstruction are zero. Ties go to the first index. Loss: MSE.
 - **TopK** (`TopKSAE`, Experiment 3): the $k$ largest pre-activations are selected and passed through a ReLU, so a selected feature with a non-positive pre-activation is inactive. With $k = 1$ it matches Top1. In Experiment 3, $k$ follows a schedule (`k_schedule` in `sae_raw/train.py`). Loss: MSE.
 - **L1 ReLU** (`ReLUSAE`, Experiment 2): $f(x) = \mathrm{ReLU}(W_{\mathrm{enc}}x + b_{\mathrm{enc}})$, and the loss is MSE plus $\lambda \sum_j f_j$. The decoder is dense, so each step costs more than a Top1 step at the same batch size.
