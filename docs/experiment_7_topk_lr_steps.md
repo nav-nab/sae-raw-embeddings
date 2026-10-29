@@ -1,6 +1,6 @@
 # Experiment 7: TopK annealing with more training and other learning rates
 
-Status: first five cells run on the laptop on 2026-10-26 to 27 (night 1). Results below. An extension with extra seeds and longer runs is set up; see the end.
+Status: done. The first five cells ran on the laptop on 2026-10-26 to 27, and an extension with extra seeds and longer runs on 2026-10-28 to 29. The extension's results (at the end) revise finding 2 of the first five cells.
 
 ## Motivation
 
@@ -63,26 +63,42 @@ Results go to `runs/exp7/`: one folder per cell (`eval_log.csv`, `result.json` a
 ### Findings
 
 1. **TopK follows the same rule as ReLU: progress depends on learning rate × steps.** The two cells with 8,000 Gao-rate steps give similar results (1,529 and 1,555).
-2. **Each doubling gains less.** Per doubling of learning rate × steps, recovery rose by 69, then about 47, then about 26 tokens. If the gains keep halving, recovery levels off near 1,595 (80%).
+2. ~~**Each doubling gains less.**~~ **Revised by the extension.** Per doubling of learning rate × steps, recovery here rose by 69, then about 47, then about 26 tokens, which suggested a plateau near 80%. The extension's seeds and longer runs show the gains do not shrink: this apparent pattern was noise in single runs.
 3. **More training helps in two ways.** Fewer features die at the drop from $k = 4$ to $k = 2$: 1,935 are alive at the end of the $k = 2$ stage, against 1,883. More features are the top feature of some token at the end of the $k = 2$ stage: 1,615 against 1,541. These are the features that survive the drop to $k = 1$.
 4. **`n_top1` rises during the $k = 2$ stage, then levels off.** In the baseline it rises from 1,395 to 1,541, mostly in the first quarter of the stage, while the alive count stays flat at about 1,880. This explains why a longer $k = 2$ stage did not help in the Experiment 3 grid, while more training overall does.
 5. **The drop to $k = 1$ remains the bottleneck.** It costs 18% to 20% of the alive features in every cell. Recovered tokens are 96% to 100% of the alive features.
 
 In the 4,000-step cell at 2 times the rate, recovered tokens (1,555) slightly exceed alive features (1,553). A feature that has just lost its last token at the drop can keep a decoder row that still matches that token.
 
-## Extension (set up 2026-10-28)
+## Extension (2026-10-28 to 29)
 
-Two questions remain: are the gains from more training real, and do they keep shrinking? The extension adds seven cells to the same grid:
+Two questions remained: are the gains from more training real, and do they keep shrinking? The extension added seven cells to the same grid: seeds 1 and 2 at 8,000 and 16,000 steps (three seeds in all at each length), and single runs at 32,000, 64,000 and 128,000 steps, all at the Gao rate. About 6 hours on the laptop.
 
-| Cells | Purpose |
-|---|---|
-| 8,000 and 16,000 steps at the Gao rate, seeds 1 and 2 | With seed 0, three seeds each, to measure the run-to-run spread |
-| 32,000, 64,000 and 128,000 steps at the Gao rate, seed 0 | To see whether the gains keep halving with each doubling |
+**Seeds.**
 
-If the gains keep halving, the 128,000-step run should recover about 1,590 tokens. If they stay at about 30 to 40 per doubling, it should recover about 1,670. The difference is well above the noise.
+| Steps | Seed 0 | Seed 1 | Seed 2 | Mean | Range |
+|---|---|---|---|---|---|
+| 8,000 | 1,529 | 1,555 | 1,515 | 1,533 | 40 |
+| 16,000 | 1,568 | 1,578 | 1,606 | 1,584 | 38 |
 
-**Expected cost on the laptop:** about 1 hour for the four seed cells and about 5 hours for the three long runs, about 6 hours in all. The same command runs only the new cells:
+**Longer runs.**
 
-```
-caffeinate -i python experiments/exp7_topk_lr_steps/run.py
-```
+| Steps | Epochs' worth | Alive at end of $k = 2$ | `n_top1` at end of $k = 2$ | Alive at end | Recovered > 0.9 | Recovered > 0.99 | Lost at the drop to $k = 1$ | Relative loss |
+|---|---|---|---|---|---|---|---|---|
+| 4,000 | 1,024 | 1,883 | 1,541 | 1,515 | 1,495 (75%) | 1,241 | 20% | 0.062 |
+| 8,000 (mean of 3) | 2,048 | 1,928 | 1,585 | 1,547 | 1,533 (77%) | 1,272 | 20% | 0.057 |
+| 16,000 (mean of 3) | 4,096 | 1,935 | 1,633 | 1,595 | 1,584 (79%) | 1,341 | 18% | 0.049 |
+| 32,000 | 8,192 | 1,957 | 1,689 | 1,677 | 1,668 (83%) | 1,492 | 14% | 0.036 |
+| 64,000 | 16,384 | 1,953 | 1,717 | 1,709 | 1,706 (85%) | 1,553 | 13% | 0.030 |
+| 128,000 | 32,768 | 1,948 | 1,784 | 1,771 | **1,771 (89%)** | 1,644 | 9% | 0.023 |
+
+### Findings of the extension
+
+1. **The gains from more training are real.** The three-seed means at 8,000 and 16,000 steps differ by 51 tokens, and the ranges do not overlap: the worst seed at 16,000 steps beats the best at 8,000. The spread between seeds, about 40 tokens, matches the difference between machines found earlier, so a single run is good to about ±20 tokens.
+2. **The gains do not shrink.** Per doubling, recovery rose by about 38, 51, 84, 38 and 65 tokens, roughly 3 percentage points each time, with no sign of levelling off by 128,000 steps. Both predictions made before the run were too low (about 1,590 if the gains kept halving, about 1,670 if they held at 30 to 40 per doubling).
+3. **More training now helps only through the drop to $k = 1$.** From about 32,000 steps on, about 1,950 features are alive at the end of the $k = 2$ stage in every run, so more training no longer saves features before then. The further gains come from more features being some token's top feature at the drop (`n_top1`: 1,541 at 4,000 steps, 1,784 at 128,000), so the drop costs 9% of the alive features instead of 20%.
+4. **The $k = 1$ stage changes nothing.** At 128,000 steps, the alive count and recovery stay flat throughout it (1,770 to 1,771), and every alive feature is a recovered token.
+5. **Precision improves fastest.** Recovery above 0.99 rose from 62% to 82%.
+6. **TopK can approach ReLU's recovery, but at a much higher cost.** The best ReLU run on the same subset recovered 98% in 32,768 steps at batch size 256 (about 8 million training tokens). The 128,000-step TopK run recovered 89% with about 66 million training tokens.
+
+We stopped at 128,000 steps. Since the gains were not shrinking, it is a fair conjecture that longer runs would recover more than 89%.

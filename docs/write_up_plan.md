@@ -4,9 +4,9 @@ Status: restructured on 2026-10-26 into three parts: TopK SAEs, ReLU SAEs with a
 
 ## Thesis
 
-With a dictionary of $m = V$ features trained on the raw token embedding table, the SAE's features should be the token embeddings. Whether training actually finds them depends mainly on the architecture.
+With a dictionary of $m = V$ features trained on the raw token embedding table, the SAE's features should be the token embeddings. Training can find them with either architecture, in the right regime. The architecture decides which regimes work and how much training they cost.
 
-- **TopK SAEs** lose features whenever $k$ is small or drops, and dead features almost never revive. The best TopK setup recovers 70% of GPT-2's tokens.
+- **TopK SAEs recover the embeddings when $k$ is annealed from a large starting value down to 1, but slowly.** Every drop in $k$ kills features, and dead features almost never revive. More training reduces these losses steadily: on the 2,000-token subvocabulary, recovery rises by about 3 percentage points per doubling of training, from 75% to 89% at 128,000 steps, and was still rising. At full scale, with about the same training per token as the shortest subvocabulary runs, it recovered 70%. With fixed $k$, TopK fails.
 - **ReLU SAEs with an L1 penalty** recover the embeddings across a wide region of hyperparameters, provided they train long enough: 93% at full scale and 98% on a subvocabulary. Outside that region they fail in one of two ways: dense codes from too little training, or dead features from too much pressure.
 - **For ReLU SAEs, recovery does not depend on the vocabulary size.** Given the same training per token, recovery as a function of $\lambda$ is the same at 2,000, 5,000, 10,000 and 20,000 tokens, to within a few points, and consistent with the full table. The number of steps needed grows in proportion to $V$ (at a fixed batch size, the same epochs' worth). So the subvocabulary behaves as a faithful small-scale model of the full problem, and results found there carry over. This is a conceptual theme of the write-up (Part 3b).
 
@@ -65,15 +65,18 @@ Subset runs have $V = m = 2{,}000$ and 4,000 steps at batch size 512, unless mar
 | | | **$k$-annealing with more training** (Experiment 7: as T10, varying steps and learning rate) | | | | | |
 | T14 | 🟡 | 4,000 steps at ½ the Gao rate | Subset | 1 | 1,479 | 1,426 (71%) | 1,187 |
 | T15 | 🟡 | 4,000 steps at the Gao rate (T10 rerun) | Subset | 1 | 1,515 | 1,495 (75%) | 1,241 |
-| T16 | 🟡 | 8,000 steps at the Gao rate | Subset | 1 | 1,537 | 1,529 (76%) | 1,266 |
+| T16 | 🟡 | 8,000 steps at the Gao rate, mean of 3 seeds (range) | Subset | 1 | 1,547 (1,534 to 1,570) | 1,533 (77%; 1,515 to 1,555) | 1,272 (1,242 to 1,308) |
 | T17 | 🟡 | 4,000 steps at 2 times the Gao rate | Subset | 1 | 1,553 | 1,555 (78%) | 1,300 |
-| T18 | 🟡 | 16,000 steps at the Gao rate | Subset | 1 | 1,589 | 1,568 (78%) | 1,333 |
+| T18 | 🟡 | 16,000 steps at the Gao rate, mean of 3 seeds (range) | Subset | 1 | 1,595 (1,586 to 1,611) | 1,584 (79%; 1,568 to 1,606) | 1,341 (1,329 to 1,362) |
+| T19 | 🟡 | 32,000 steps at the Gao rate | Subset | 1 | 1,677 | 1,668 (83%) | 1,492 |
+| T20 | 🟡 | 64,000 steps at the Gao rate | Subset | 1 | 1,709 | 1,706 (85%) | 1,553 |
+| T21 | 🟡 | 128,000 steps at the Gao rate | Subset | 1 | 1,771 | **1,771 (89%)** | 1,644 |
 
 In every TopK run, every token uses exactly $k$ features at the end: no token has a zero code, and the fixed-$k$ runs fill all $k$ slots. So the mean, the median and the whole range are $k$, and there is no spread to report.
 
-No TopK run reaches 90%.
+No TopK run reaches 90%, but the longest comes close (T21, 89%), and its recovery was still rising.
 
-**Noise.** All runs use one seed. T15 repeats T10 with the same seed and settings, but on another machine and with the later grid code; it recovered 1,495 tokens against 1,499. The same cell run in the sandbox gave 1,531. So differences of about 35 tokens between single runs can come from the machine alone.
+**Noise.** Runs use one seed, except T16 and T18, which use three. Their seeds differ by about 40 tokens (1,515 to 1,555 at 8,000 steps, and 1,568 to 1,606 at 16,000). The machine matters about as much: T15 repeats T10 with the same seed and settings, but on another machine and with the later grid code, and recovered 1,495 tokens against 1,499; the same cell in the sandbox gave 1,531. So a single run is good to about ±20 tokens, and differences of 40 or less between single runs should not be read as real.
 
 ### 1a. Failure modes
 
@@ -82,14 +85,20 @@ No TopK run reaches 90%.
 - **Annealing from a small $k_0$ fails (T4 to T6)** because too few features are alive at the start.
 - **An auxiliary loss does not rescue the dead features (T12, T13).** AuxK trains dead features to reconstruct the residual. An argument predicts this should fail at $k = 1$. A dead feature aligned with the residual of a token coded at cosine $\cos\theta$ scores about $\lvert x\rvert\sin\theta$ on that token, against $\lvert x\rvert\cos\theta$ for the incumbent: at $\cos\theta = 0.9$, $0.44\lvert x\rvert$ against $0.9\lvert x\rvert$. Standard AuxK gave slightly fewer tokens than T10 without it (1,476 and 1,478, against 1,499). The whole-token variant gave up to 43 more (1,542). All runs used one seed, so we cannot tell whether a difference of this size is real. For comparison, near-identical schedules in the subset grid differ by up to about 40 tokens. Even before the final drop, AuxK could not help much, because features die *at* the drops, not between them.
 
-### 1b. Partial successes: annealing from a large $k$
+### 1b. Success, at a high cost: annealing from a large $k$
+
+Annealing from a large $k$ recovers the embeddings, and recovery keeps rising with training. The cost is the difference from ReLU: TopK needs far more training for less recovery (see the last bullet).
 
 - **Surviving features are almost all correct.** In Experiment 3 (T11), 97% of the alive features are recovered tokens, with a median best cosine of 0.99997.
 - **The shortfall is entirely features dying at the drops.** Alive features peak at 50,249 at $k = 128$. About 4,000 die at the drop to $k = 2$, and about 7,000 more (16%) at the drop to $k = 1$. On the subset, too, every schedule loses 15% to 20% at the final drop.
 - **Dead features almost never revive.** Over the 6,400 steps at $k = 2$, the alive count rose by only 244. After the drop to $k = 1$, it rose by 3. The one exception is a large $k$ at the start: $k_0 = 128$ revived all 3,349 features dead at initialisation within 800 steps.
-- **What matters most is the starting $k$ (T6 to T10).** On the subset, recovery rises with $k_0$ until nearly every feature is alive at the start. The shape of the low end changes it by at most about 40 tokens.
-- **More training helps, but less with each doubling (T14 to T18).** As for ReLU, progress depends on learning rate × steps: twice the steps (T16) and twice the learning rate (T17) give similar results. Per doubling of learning rate × steps, recovery rose by 69, then about 47, then about 26 tokens, to 1,568 (78%). More training helps in two ways. Fewer features die at the drop from $k = 4$ to $k = 2$, and more features are the top feature of some token at the end of the $k = 2$ stage, which is what decides survival at the drop to $k = 1$. That number rises mostly in the first quarter of the $k = 2$ stage and then levels off, which is why a longer $k = 2$ stage alone did not help. The drop to $k = 1$ still costs 18% to 20% of the alive features in every run. Whether the gains keep shrinking is being tested with longer runs and extra seeds (the Experiment 7 extension).
-- **The subset predicts full scale well.** The same schedule recovered 75% of the subset (T10) and 70% of the full table (T11).
+- **Two things matter: the starting $k$ and the amount of training.**
+  - **The starting $k$ (T6 to T10).** On the subset, recovery rises with $k_0$ until nearly every feature is alive at the start, and then levels off. The shape of the low end of the schedule changes recovery by at most about 40 tokens.
+  - **The amount of training (T14 to T21).** As for ReLU, progress depends on learning rate × steps: twice the steps (T16) and twice the learning rate (T17) give similar results. From 4,000 to 128,000 steps, recovery rises by about 40 to 80 tokens per doubling, roughly 3 percentage points, with no sign of levelling off: 75%, 77%, 79%, 83%, 85% and 89%. The three-seed means at 8,000 and 16,000 steps differ by 51 tokens, and their ranges do not overlap, so the gain is real. Recovery above 0.99 rises faster still, from 62% to 82%.
+- **How more training helps.** It decides how many features survive the drop to $k = 1$. A feature survives only if it is the top feature of at least one token at the end of the $k = 2$ stage. Up to about 32,000 steps, more training also saves features at the drop from $k = 4$ to $k = 2$; beyond that, about 1,950 features are alive at the end of the $k = 2$ stage in every run. More training then raises the number that are some token's top feature: 1,541 at 4,000 steps, 1,689 at 32,000 and 1,784 at 128,000. So the drop to $k = 1$ costs 20% of the alive features at 4,000 steps but 9% at 128,000. The $k = 1$ stage itself changes nothing: the alive count and recovery stay flat through it. A longer $k = 2$ stage alone does not help, because within a run this number rises mostly in the first quarter of the stage and then levels off.
+- **A conjecture: recovery would keep rising with more training.** We stopped at 128,000 steps. The gains show no sign of shrinking, so recovery above 89% is likely with longer runs. The same may hold at full scale: Experiment 3 (T11, 70%) had about 1,300 epochs' worth of training, close to the shortest subset runs (1,024), which recovered 75%.
+- **The subset predicts full scale well**, at equal training per token. The same schedule recovered 75% of the subset (T10, 1,024 epochs' worth) and 70% of the full table (T11, about 1,300).
+- **The cost compared with ReLU.** On the same subset, the best ReLU run (R1, $\lambda = 0.03$) recovered 98% in 32,768 steps at batch size 256, about 8 million training tokens. The best TopK run (T21) recovered 89% in 128,000 steps at batch size 512, about 66 million training tokens: four times the steps and eight times the tokens, for less recovery. At about 3 points per doubling, matching ReLU's 98% would take several more doublings of TopK training.
 
 ## Part 2: ReLU SAEs with an L1 penalty
 
@@ -226,16 +235,7 @@ The learning rate falls with size, as $1/\sqrt{m}$, so each update is smaller at
 
 ## Next experiments
 
-Experiments 7 and 9 have run (2026-10-26 to 28). Their results are in Parts 1 and 3b. Two runs are outstanding:
-
-1. **Experiment 7 extension** (Part 1, `docs/experiment_7_topk_lr_steps.md`). Two more seeds at 8,000 and 16,000 steps, to measure the run-to-run spread, and single runs at 32,000, 64,000 and 128,000 steps, to see whether the gains from more training keep shrinking. About 6 hours on the laptop.
-2. **Experiment 8: TopK annealing at intermediate sizes** (Part 3a, `docs/experiment_8_topk_sizes.md`). The 5,000, 10,000 and 20,000 most frequent tokens, starting at $k_0$ = 42, 55 and 71, which leave 93% of features alive at initialisation, with $2V$ steps so that every size gets 1,024 epochs' worth of training. It tests whether matching the share alive at the start also matches recovery at the end. About 5 hours on the laptop.
-
-Both run with one command, one after the other, in about 11 hours:
-
-```
-caffeinate -i python scripts/run_overnight.py
-```
+All planned experiments have run. Experiment 8 (Part 3a, `docs/experiment_8_topk_sizes.md`: TopK annealing at 5,000, 10,000 and 20,000 tokens with $2V$ steps) is still to be analysed.
 
 ## Appendix A: why the embeddings minimise the L1 loss
 
@@ -333,7 +333,7 @@ The write-up's methodology section should give a brief overview of these details
 
 - **Training length** is measured in two ways. *Epochs' worth*: steps × $B$ / $V$. *Gao-rate steps*: steps × (learning rate / Gao rate). At a fixed $V$, progress depends mainly on Gao-rate steps, whatever the batch size and learning rate (Experiments 4 and 7). Across sizes, for ReLU, the steps needed grow in proportion to $V$ (Experiment 9, at a fixed batch size).
 - **Evaluation.** Over every token of the vocabulary, weighted equally. A token is recovered if some decoder row is its mutual nearest neighbour at cosine above 0.9 (and 0.99). A feature is alive if it is active on at least one token. A feature is active on a token if its coefficient is positive.
-- **Seeds.** One seed (0) per run, except the Experiment 7 extension (seeds 0, 1 and 2 at two lengths).
+- **Seeds.** One seed (0) per run, except two Experiment 7 cells (T16 and T18: seeds 0, 1 and 2).
 - **Hardware.** Full-scale runs and Experiments 7 to 9 ran on the laptop (CPU, PyTorch 2.2.2). Pilots ran in a cloud sandbox. The same run gave 1,495 and 1,531 recovered tokens on the two machines, so results from different machines can differ by about 35 tokens on the subset.
 
 ### Per experiment
@@ -349,7 +349,7 @@ The write-up's methodology section should give a brief overview of these details
 | 4 | L1 ReLU, $\lambda$ from 0.03 to 1 | 2,000 | 256, 1,024, 4,096 | 32,768, 8,192, 2,048 | ¼, 1, 4 | 4,194 in every cell ($2^{23}$ tokens) | R1 to R4 |
 | 5 | none (initialisation only) | 2,000 to 50,257 | | | | | Part 3a |
 | 6 | none (geometry only) | 2,000 and 50,257 | | | | | Appendix B |
-| 7 | TopK, annealed from 128 | 2,000 | 512 | 4,000 to 16,000 (extension: up to 128,000) | ½, 1, 2 | 1,024 to 4,096 (extension: up to 32,768) | T14 to T18 |
+| 7 | TopK, annealed from 128 | 2,000 | 512 | 4,000 to 128,000 | ½, 1, 2 | 1,024 to 32,768 | T14 to T21 |
 | 8 | TopK, annealed from 42, 55, 71 | 5,000, 10,000, 20,000 | 512 | $2V$: 10,000, 20,000, 40,000 | 1 | 1,024 at every size | Part 3a |
 | 9 | L1 ReLU, $\lambda$ = 1, 0.3, 0.1 (and 0.03 at 5,000) | 5,000, 10,000, 20,000 | 256 | $V$, $2V$, $4V$ (and $16V$) | 1 | 256, 512, 1,024 (and 4,096) at every size | Part 3b |
 | 10 | ReLU, $\lambda = 0$ (no penalty) | 2,000 | 256 | 32,768 | 1 | 4,194 | R10 |
