@@ -536,7 +536,7 @@ Gao rate & $5.7\times10^{-4}$ & $3.6\times10^{-4}$ & $2.6\times10^{-4}$ & $1.8\t
 Runs & Model & $V$ & Steps (batch) & LR & Epochs' worth \\
 \midrule
 Fixed $k$ & TopK & 2,000 & 3,000 (512) & 1 & 768 \\
-\rev{Top1,} annealing \rev{and AuxK pilots} & TopK & 2,000 & 4,000 (512) & 1 & 1,024 \\
+\leavevmode\rev{Top1,} annealing \rev{and AuxK pilots} & TopK & 2,000 & 4,000 (512) & 1 & 1,024 \\
 Top1, full table & TopK, $k = 1$ & 50,257 & 16,820 (4,096) & 1 & 1,371 \\
 Annealing, full table & TopK, $k_0 = 128$ & 50,257 & 15,980 (4,096) & 1 & 1,302 \\
 More training & TopK, $k_0 = 128$ & 2,000 & 4,000 to 128,000 (512) & $\tfrac12$, 1, 2 & 1,024 to 32,768 \\
