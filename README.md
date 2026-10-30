@@ -70,7 +70,8 @@ docs/
   experiment_9_relu_sizes.md     L1 ReLU SAEs at intermediate vocabulary sizes
   experiment_10_relu_no_penalty.md  control: a ReLU SAE with no sparsity penalty
   failure_modes.md             running table of failed attempts and why they failed
-  write_up_plan.md             framing of the write-up: one success mode, many failure modes
+  write_up_plan.md             full write-up plan: framing, results tables, appendices
+  write_up_outline.md          streamlined outline of the write-up, by conceptual point
   planning/                    original planning documents, kept unchanged as a record
 tests/                pytest suite
 data/                 generated, not tracked by git
