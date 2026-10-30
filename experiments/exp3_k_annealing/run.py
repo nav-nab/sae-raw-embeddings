@@ -12,7 +12,7 @@ for 40% and k = 1 for the last 20%. --stages changes the schedule. The final
 model is a Top1 SAE, analysed for alive features, loss and decoder recovery.
 
 With --subset 2000 and --steps, --batch-size and --stages, the same script runs
-the TopK pilots on the 2,000 most frequent tokens (see the README).
+the TopK pilots on the 2,000 most frequent tokens (see docs/reproducing.md).
 
 A checkpoint is saved every 10 minutes. Ctrl-C saves and stops; running the
 same command again resumes with the settings saved in the run directory. A

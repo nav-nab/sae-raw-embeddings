@@ -19,6 +19,7 @@ The paper (`paper/main.pdf`) is the final account of the project. The documents 
 
 ## Other documents
 
+- `reproducing.md`: how the repository is organised and how to reproduce every result in the paper.
 - `failure_modes.md`: a running table of the attempts that failed to recover the embeddings, with an interpretation of each.
 - `write_up_plan.md` and `write_up_outline.md`: the plans for the paper. The full plan has every results table, with row tags (T1 to T24 for TopK, R1 to R10 for ReLU) that some experiment documents refer to. The outline is the paper's structure.
 - `planning/`: the documents from the planning discussion before any code was written, kept unchanged as a record.
