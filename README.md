@@ -73,6 +73,9 @@ docs/
   write_up_plan.md             full write-up plan: framing, results tables, appendices
   write_up_outline.md          streamlined outline of the write-up, by conceptual point
   planning/                    original planning documents, kept unchanged as a record
+paper/
+  main.tex, refs.bib  the write-up (compiled to main.pdf)
+  make_figures.py     makes every figure in paper/figures/ from runs/
 tests/                pytest suite
 data/                 generated, not tracked by git
 runs/                 generated, not tracked by git
@@ -182,3 +185,11 @@ Ideas to revisit after the experiments above. Each one changes the training reci
 - [x] Experiment 9 at 20,000 tokens (night 2)
 - [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
 - [x] Experiment 2 full run (85,100 steps)
+- [x] Write-up: `paper/main.pdf`
+
+## Building the paper
+
+```
+python paper/make_figures.py      # needs the results under runs/
+cd paper && latexmk -pdf main.tex
+```

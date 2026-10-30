@@ -5,3 +5,10 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .DS_Store
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
