@@ -194,7 +194,7 @@ With $\lambda > 0$, no dictionary reaches zero loss, because every active featur
 For any unit-length dictionary and any non-negative code, the loss of a token $x$ with $\norm{x} > \lambda/2$ is at least $\lambda\norm{x} - \lambda^2/4$. A single feature along $x$, with coefficient $\norm{x} - \lambda/2$, reaches this bound.
 \end{proposition}
 
-The proof is short. By the triangle inequality, the penalty $\lambda\sum_j f_j$ is at least $\lambda\norm{\hat{x}}$. Among all reconstructions of a given length, the closest to $x$ points along $x$. Minimising over the length gives the bound. Appendix~\ref{app:l1} gives the argument step by step.
+The proof is short. By the triangle inequality, the penalty $\lambda\sum_j f_j$ is at least $\lambda\norm{\hat{x}}$. Among all reconstructions of a given length, the closest to $x$ points along $x$. Minimising over the length gives the bound. Appendix~\ref{app:l1} gives the argument step by step. \rev{The condition $\norm{x} > \lambda/2$ ensures that the optimal coefficient is positive. It is easily met here: the smallest GPT-2 embedding norm is 2.45, while $\lambda/2$ is at most 0.5 in our runs.}
 
 The optimal coefficient is $\norm{x} - \lambda/2$, not $\norm{x}$: the L1 penalty shrinks every coefficient by $\lambda/2$. This is the familiar shrinkage of the lasso \citep{tibshirani1996lasso}, which \citet{gao2024scaling} also discuss for ReLU SAEs. Our full-scale run \rev{(Section~\ref{sec:fullscale})} shows exactly this: each token's coefficient ended at its norm minus 0.15, which is $\lambda/2$ for $\lambda = 0.3$.
 
@@ -247,15 +247,22 @@ The codes end near one-hot, though not exactly (Figure~\ref{fig:codes}). In the 
 \subsection{The penalty must be weak, but not infinitely weak}
 \label{sec:weak}
 
-A smaller $\lambda$ recovers more, because it kills fewer features on the way to one-hot codes. But a smaller $\lambda$ also sparsifies more slowly. Figure~\ref{fig:lambda}a measures the training needed until codes reach two active features per token on average. It grows roughly as $\lambda^{-0.9}$ between $\lambda = 0.03$ and 0.3: about 26,000 Gao-rate steps at $\lambda = 0.03$, against 2,000 to 4,000 at $\lambda = 0.3$. This is the ReLU form of the trade-off of Section~\ref{sec:tradeoff}.
+A smaller $\lambda$ recovers more, because it kills fewer features on the way to one-hot codes \rev{(Figure~\ref{fig:lambda}a)}. But a smaller $\lambda$ also sparsifies more slowly. Figure~\ref{fig:lambda}\rev{b} measures the training needed until codes reach two active features per token on average. It grows roughly as $\lambda^{-0.9}$ between $\lambda = 0.03$ and 0.3: about 26,000 Gao-rate steps at $\lambda = 0.03$, against 2,000 to 4,000 at $\lambda = 0.3$. This is the ReLU form of the trade-off of Section~\ref{sec:tradeoff}.
 
-So does $\lambda = 0$ do best of all? It recovers nothing (Figure~\ref{fig:lambda}b, c). With no penalty, every exact reconstruction has zero loss, so the bound of Proposition~\ref{prop:l1} no longer singles out the embeddings. The run reconstructs as well as the best penalised run, but with dense codes of about 670 features per token. \rev{For most of training it reconstructs better, since it pays nothing for using many features (Figure~\ref{fig:lambda}d).} Its decoder rows stay close to random: the median cosine between a token and its nearest decoder row rises only from 0.12 to 0.16.
+So does $\lambda = 0$ do best of all? It recovers nothing \rev{(Figure~\ref{fig:nopenalty}a, b)}. With no penalty, every exact reconstruction has zero loss, so the bound of Proposition~\ref{prop:l1} no longer singles out the embeddings. The run reconstructs as well as the best penalised run, but with dense codes of about 670 features per token. \rev{For most of training it reconstructs better, since it pays nothing for using many features (Figure~\ref{fig:nopenalty}c).} Its decoder rows stay close to random: the median cosine between a token and its nearest decoder row rises only from 0.12 to 0.16.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/lambda.pdf}
-\caption{The strength of the penalty, on the 2k subset. (a) Training needed until codes reach two active features per token on average, for every run without heavy deaths. The dashed line is a fit for $\lambda \le 0.3$. \rev{(b--d)} The same run with $\lambda = 0.03$ and with no penalty. \rev{(d) Squared reconstruction error relative to the squared norm of the tokens, without the penalty term.}}
+\caption{The strength of the penalty, on the 2k subset. \rev{(a) Tokens recovered and features alive at the end of the best run for each $\lambda$ in the grid (Table~\ref{tab:relu-grid}). (b)} Training needed until codes reach two active features per token on average, for every run without heavy deaths. The dashed line is a fit for $\lambda \le 0.3$.}
 \label{fig:lambda}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/no_penalty.pdf}
+\caption{\rev{The same run on the 2k subset with $\lambda = 0.03$ and with no penalty (batch size 256, the Gao rate). (c) Squared reconstruction error relative to the squared norm of the tokens, without the penalty term.}}
+\label{fig:nopenalty}
 \end{figure}
 
 The picture is that the penalty must be weak, but not infinitely weak, and the training budget sets how weak. For any $\lambda > 0$, however small, the embeddings remain the minimiser of the loss. What shrinks as $\lambda$ falls is the force that pushes each code towards a single feature, so the time to sparsify grows. Only at $\lambda = 0$ itself does the minimiser disappear. The two sides of the trade-off are:
@@ -371,7 +378,7 @@ The ReLU SAE with $\lambda = 0.3$ recovered 93\% (Figure~\ref{fig:relu-sizes}, s
 
 \section{Conclusion}
 
-With one feature per token and no bottleneck, an SAE trained on GPT-2's embedding table has a known target: the embeddings themselves. Training can find it with either architecture, but the architecture decides which regimes work and how much training they cost. A ReLU SAE with an L1 penalty recovers 93\% to 98\% of tokens across a wide region of settings, provided the penalty is weak but not zero and training is long enough. A TopK SAE fails with any fixed $k$. Annealing $k$ to 1 succeeds, at a cost far above ReLU's, because every drop in $k$ is a contest that some features lose for good. For both architectures, recovery depends on the training per token and not on the vocabulary size. So small, cheap experiments predict the full-scale behaviour. Natural next steps are longer TopK runs to find where annealing levels off, and the same test on activations with a planted dictionary.
+With one feature per token and no bottleneck, an SAE trained on GPT-2's embedding table has a known target: the embeddings themselves. Training can find it with either architecture, but the architecture decides which regimes work and how much training they cost. A ReLU SAE with an L1 penalty recovers 93\% to 98\% of tokens across a wide region of settings, provided the penalty is weak but not zero and training is long enough. A TopK SAE fails with any fixed $k$. Annealing $k$ to 1 succeeds, at a cost far above ReLU's, because every drop in $k$ is a contest that some features lose for good. For both architectures, recovery depends on the training per token and not on the vocabulary size. So small, cheap experiments predict the full-scale behaviour. Natural next steps are longer TopK runs to find where annealing levels off, and the same test \rev{on synthetic data with a planted dictionary. Such data would be built from a chosen set of feature directions, more of them than dimensions as in superposition, with each vector a sparse non-negative combination of them \citep{sharkey2022taking}. This keeps a known answer, as here, while adding the bottleneck that our setting deliberately leaves out.}
 
 \section*{Acknowledgements}
 
@@ -691,5 +698,5 @@ With this cutoff, the share of tokens using one feature changes by at most 2 per
 
 \subsection{Time to sparsify}
 
-Figure~\ref{fig:lambda}a uses the runs of the ReLU grid in which at least 90\% of features stay alive. Each run is evaluated after 0.5, 1, 2, 4 and 8 million training examples. We find where the mean number of active features per token first falls to 2, interpolating linearly in the logarithms of both training and active features between the two evaluations around it. The evaluations are a factor of 2 apart, so each crossing is uncertain by up to about that factor, and the exponent of the fit is a rough guide.
+Figure~\ref{fig:lambda}\rev{b} uses the runs of the ReLU grid in which at least 90\% of features stay alive. Each run is evaluated after 0.5, 1, 2, 4 and 8 million training examples. We find where the mean number of active features per token first falls to 2, interpolating linearly in the logarithms of both training and active features between the two evaluations around it. The evaluations are a factor of 2 apart, so each crossing is uncertain by up to about that factor, and the exponent of the fit is a rough guide.
 \end{document}
