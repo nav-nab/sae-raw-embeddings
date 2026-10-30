@@ -4,7 +4,7 @@ A cell is a dict with a name, a batch size and a learning rate factor (a
 multiple of the Gao rule), and one of:
 
 - an L1 ReLU cell with an l1_coef, trained to the grid's token count
-  (Experiment 4);
+  (Experiments 4 and 10);
 - a "stepped" cell, with its own steps and eval_every. It is either an L1 cell
   (Experiment 9) or a TopK cell with model "topk" and a k schedule, as for
   k_schedule (Experiments 7 and 8).

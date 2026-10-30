@@ -1,0 +1,16 @@
+{
+  "n_dead_at_init": 0,
+  "n_revived": 0,
+  "revival_pct": NaN,
+  "mse": 1.0416508953518977,
+  "rel_loss": 0.06568577280273365,
+  "mean_l0": 24.39962592275703,
+  "n_tokens": 50257,
+  "n_alive": 50240,
+  "n_zero_code": 0,
+  "n_mutual": 20256,
+  "median_best_cos": 0.6950231194496155,
+  "n_recovered_cos0.9": 1292,
+  "n_recovered_cos0.99": 48,
+  "training_hours": 10.14
+}

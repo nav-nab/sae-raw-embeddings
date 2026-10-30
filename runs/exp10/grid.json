@@ -1,0 +1,27 @@
+{
+  "experiment": "experiment_10_relu_no_penalty",
+  "data_dir": "data",
+  "subset": 2000,
+  "V": 2000,
+  "seed": 0,
+  "max_tokens_m": 8,
+  "eval_tokens_m": 0.5,
+  "base_lr": 0.0005724334022399461,
+  "checkpoint_minutes": 10.0,
+  "heartbeat_seconds": 120.0,
+  "device": "cpu",
+  "cells": [
+    {
+      "name": "lam0_lr1_b256",
+      "l1_coef": 0.0,
+      "lr_factor": 1.0,
+      "batch_size": 256
+    }
+  ],
+  "started": "2026-10-28 13:57",
+  "step_seconds": {
+    "256": 0.0394
+  },
+  "step_seconds_by_k": {},
+  "eval_seconds": 0.13
+}

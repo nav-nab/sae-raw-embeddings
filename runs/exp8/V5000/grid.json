@@ -1,0 +1,70 @@
+{
+  "experiment": "experiment_8_topk_sizes",
+  "data_dir": "data",
+  "subset": 5000,
+  "V": 5000,
+  "seed": 0,
+  "max_tokens_m": 8,
+  "eval_tokens_m": 0.5,
+  "base_lr": 0.00036203867196751236,
+  "checkpoint_minutes": 10.0,
+  "heartbeat_seconds": 60.0,
+  "device": "cpu",
+  "cells": [
+    {
+      "name": "V5000_k0_42",
+      "model": "topk",
+      "schedule": {
+        "shape": "stages",
+        "stages": [
+          [
+            42,
+            0.08
+          ],
+          [
+            32,
+            0.08
+          ],
+          [
+            16,
+            0.08
+          ],
+          [
+            8,
+            0.08
+          ],
+          [
+            4,
+            0.08
+          ],
+          [
+            2,
+            0.4
+          ],
+          [
+            1,
+            0.2
+          ]
+        ]
+      },
+      "steps": 10000,
+      "eval_every": 250,
+      "lr_factor": 1.0,
+      "batch_size": 512
+    }
+  ],
+  "started": "2026-10-29 03:39",
+  "step_seconds": {},
+  "step_seconds_by_k": {
+    "512": {
+      "42": 0.1643,
+      "32": 0.1377,
+      "16": 0.0893,
+      "8": 0.0713,
+      "4": 0.0575,
+      "2": 0.0507,
+      "1": 0.0474
+    }
+  },
+  "eval_seconds": 0.52
+}

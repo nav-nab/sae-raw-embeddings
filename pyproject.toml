@@ -4,8 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sae-raw"
-version = "0.1.0"
-description = "Can a sparse autoencoder recover GPT-2's raw token embeddings?"
+version = "1.0.0"
+description = "Can a sparse autoencoder recover GPT-2's raw token embeddings? Code and results for the paper."
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.9"
 dependencies = [
     "numpy",
@@ -16,7 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-train = ["torch"]
+# Training and analysis (all experiments).
+train = ["torch", "scipy"]
+# Figures for the paper.
+paper = ["matplotlib", "pandas", "scipy"]
 dev = ["pytest"]
 
 [tool.setuptools]

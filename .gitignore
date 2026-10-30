@@ -1,10 +1,18 @@
-data/
-runs/
+# Data: the embedding table is downloaded by scripts/prepare_data.py.
+# The token counts (data/token_counts.npy, data/meta.json) are tracked.
+data/embeddings.npy
+
+# Training runs: model weights, checkpoints and logs are not tracked.
+# The result tables (CSV and JSON) under runs/ are tracked.
+runs/**/*.pt
+runs/**/*.tmp
+runs/**/run.log
+
+# Python and LaTeX build files
 __pycache__/
 *.pyc
 *.egg-info/
 .pytest_cache/
-.DS_Store
 paper/*.aux
 paper/*.bbl
 paper/*.blg
@@ -12,3 +20,5 @@ paper/*.fdb_latexmk
 paper/*.fls
 paper/*.log
 paper/*.out
+
+.DS_Store

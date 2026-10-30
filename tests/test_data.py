@@ -62,3 +62,16 @@ def test_save_and_load_roundtrip(tmp_path):
     data.save_prepared(tmp_path, E, counts, {"note": "x"})
     E2, counts2 = data.load_prepared(tmp_path)
     assert np.array_equal(E, E2) and np.array_equal(counts, counts2)
+
+
+def test_prepare_keeps_shipped_counts(tmp_path, monkeypatch):
+    E = np.arange(12, dtype=np.float32).reshape(4, 3) + 1
+    counts = np.array([5, 0, 7, 1], dtype=np.int64)
+    data.save_prepared(tmp_path, np.zeros((1, 1), dtype=np.float32), counts, {"gpt2_revision": "r"})
+    (tmp_path / data.EMBEDDINGS_FILE).unlink()
+    monkeypatch.setattr(data, "extract_gpt2_embeddings", lambda: (E, "r"))
+    monkeypatch.setattr(data, "wikipedia_texts",
+                        lambda seed=0: (_ for _ in ()).throw(AssertionError("should not count")))
+    data.prepare(tmp_path, log=lambda msg: None)
+    E2, counts2 = data.load_prepared(tmp_path)
+    assert np.array_equal(E, E2) and np.array_equal(counts, counts2)

@@ -8,15 +8,14 @@ One command runs everything:
 For each size V in 5,000, 10,000 and 20,000, it trains L1 ReLU SAEs with
 m = V on the V most frequent tokens, at lambda = 0.1, 0.3 and 1, and also at
 lambda = 0.03 for V = 5,000. Batch size 256, the Gao learning rate, seed 0.
-The planned lengths grow in proportion to V: 4V steps at lambda = 0.1, 2V at
+The lengths grow in proportion to V: 4V steps at lambda = 0.1, 2V at
 0.3, V at 1 and 16V at 0.03. Each run is evaluated 40 times along the way,
 with decoder recovery and the spread of active features per token. The
 learning rate is constant, so the evaluations show every shorter length too.
 
---sizes runs only some of the sizes. The planned split over two nights is
+--sizes runs only some of the sizes, for example
 
     caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 5000 10000
-    caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 20000
 
 Every run keeps its checkpoint when it finishes, so a run that has not
 converged can be trained further:

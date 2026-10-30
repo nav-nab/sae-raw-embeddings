@@ -1,6 +1,6 @@
 # Experiment 2: an L1-penalised ReLU SAE
 
-Status: first full run done (2026-10-16 to 17), not converged; being extended.
+Status: done. The first 10-hour run (2026-10-16 to 17) had not converged, so it was extended twice, to 85,100 steps in all (about 47 hours on the laptop, finished 2026-10-19). Final results under "Extensions and final result".
 
 This experiment runs if fewer than 80% of the Top1 features that are dead at initialisation revive in Experiment 1. None revived (`docs/experiment_1_results.md`), so it goes ahead.
 
@@ -83,6 +83,22 @@ The run had not converged. Active features per token were still falling by about
 We are therefore continuing the same run from its checkpoint to step 45,325, with `--extend-steps 26500`. That is 29 more evaluations and about 15 hours. This separates two readings: sparsification that is too slow for the time budget, and an L1 penalty that is too light to give one-hot codes at all.
 
 The best point may come before the end of the extension, with codes nearly one-hot but few features dead. The extension therefore keeps the parameters at 10 evaluations, spread evenly, in `runs/exp2/snapshots/`. They fall at steps 21,275, 24,050, 26,825, 29,600, 31,450, 34,225, 37,000, 39,775, 42,550 and 45,325. The weights at step 18,500 were copied there by hand before the extension.
+
+## Extensions and final result
+
+The run was extended from its checkpoint, first to 55,500 steps and then to 85,100. The learning rate is constant, so an extension continues the same run.
+
+| Step | Active features per token | Alive features | Recovered > 0.9 | Recovered > 0.99 | Relative loss |
+|---|---|---|---|---|---|
+| 18,500 | 24.4 | 50,240 | 1,292 (2.6%) | 48 | 0.066 |
+| 55,500 | 1.45 | 49,887 | 46,425 (92.4%) | 43,905 (87.4%) | 0.0067 |
+| 85,100 | 1.37 | 49,869 | 46,590 (92.7%) | 44,337 (88.2%) | 0.0066 |
+
+So the first reading held: sparsification was too slow for the 10-hour budget, not too weak. Codes went from about 25,000 active features per token to 1.37 while only about 400 features died. The median best cosine between a token and a decoder row is 0.99997. Each token's main coefficient ends at its norm minus about 0.15, which is the L1 shrinkage of $\lambda/2$ (Appendix A of the paper).
+
+The 7% of tokens not recovered lie in crowded regions of the embedding space. Experiment 6 shows that they are tokens a ReLU feature can separate only through a narrow gap.
+
+The snapshots of the weights were deleted when the repository was published. Only the final `model.pt` is kept locally (not tracked by git), since `scripts/code_spread.py` and Experiment 6 read it.
 
 ## Decisions
 

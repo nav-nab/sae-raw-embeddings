@@ -180,7 +180,7 @@ def _parser(description, default_run_dir, schedule, l1_coef, batch_size):
                        help="k schedule as k:fraction pairs in order, fractions summing to 1 "
                             f"(default {format_stages(schedule['stages'])})")
     p.add_argument("--subset", type=int, default=0,
-                   help="debugging: train on the N most frequent tokens only, with m = N")
+                   help="train on the N most frequent tokens only, with m = N")
     p.add_argument("--frequency-weighted", action="store_true",
                    help="sample tokens by Wikipedia frequency and weight evaluation the same "
                         "way (off in the experiment design)")

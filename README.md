@@ -1,195 +1,113 @@
-# sae-raw-embeddings
+# Can a sparse autoencoder find the token embeddings?
 
-Can a sparse autoencoder (SAE), trained by gradient descent from random initialisation, recover the raw token embeddings of a pretrained language model?
+Code, results and paper for a toy model of sparse autoencoder (SAE) training with a known answer.
 
-The setting is chosen so that an exact answer exists. We train on the rows of GPT-2 Small's input embedding table, with $V = 50{,}257$ rows in $d = 768$ dimensions and a dictionary of $m = V$ features. Decoder rows have unit norm and there is no decoder bias. For a Top1 SAE ($k = 1$), the zero-loss dictionary is then the set of normalised token embeddings, up to permutation. The question is whether training finds it.
+We train SAEs on the raw token embedding table of GPT-2 Small ($V = 50{,}257$ vectors in $d = 768$ dimensions), with exactly one feature per token ($m = V$). With no bottleneck, the natural target is the embedding table itself: one feature along each token's embedding. We train from random initialisation and measure how much of the target training recovers. A token counts as recovered if some decoder row is its mutual nearest neighbour at a cosine above 0.9.
 
-## Experiments
+**Paper:** [`paper/main.pdf`](paper/main.pdf). Main findings:
 
-Each experiment has a plan in `docs/` and its code in its own folder under `experiments/`.
+- **TopK SAEs** fail with any fixed $k$. Lowering $k$ during training to 1 succeeds, at a high training cost: on a 2,000-token subvocabulary, recovery rises by about 3 percentage points per doubling of training, to 89% at the longest run.
+- **ReLU SAEs with an L1 penalty** recover 93% of the full table, and up to 98% of the subvocabulary, across a wide region of settings. The penalty must be weak, but not zero.
+- **With training scaled in proportion to the vocabulary size, recovery does not depend on it**, for both architectures.
 
-- **Experiment 1** (plan `docs/experiment_1_top1.md`, results `docs/experiment_1_results.md`, code `experiments/exp1_top1/`): a Top1 SAE. Most features are dead at initialisation, and a dead feature gets no gradient. The experiment measured what percentage of the features dead at initialisation revive during training. Result: none revived, and only 259 features were alive at the end.
-- **Experiment 2** (plan and results `docs/experiment_2_l1_relu.md`, code `experiments/exp2_l1_relu/`, done): an L1-penalised ReLU SAE with the same data, dictionary and initialisation, with $\lambda = 0.3$ and batch size 1024. Result after 85,100 steps: 46,590 of 50,257 tokens recovered at cosine above 0.9 and 44,337 above 0.99, with 1.37 active features per token.
-- **Experiment 3** (plan `docs/experiment_3_k_annealing.md`, code `experiments/exp3_k_annealing/`, done): as Experiment 1, but with a TopK encoder whose $k$ starts at 128, to keep features alive, and is lowered to 1 during training, to push towards one feature per token. The schedule (a long $k = 2$ stage) was chosen from a grid of subset tests and the share of features alive at initialisation at full scale. A fixed $k > 1$ was considered first and dropped, because subset measurements showed it keeps features alive only by giving up recovery. Result: 35,261 of 50,257 tokens recovered at cosine above 0.9 (70%), with nearly every surviving feature correct; features die when $k$ drops. On the subset, more training reduces these losses steadily (Experiment 7).
-- **Experiment 4** (plan `docs/experiment_4_relu_grid.md`, code `experiments/exp4_relu_grid/`, done): a grid of L1 ReLU SAEs on the 2,000-token subvocabulary over the L1 coefficient, the learning rate and the batch size (54 cells), with recovery measured along each run at 0.5 to 8 million tokens. It maps the ReLU failure modes for Part 1 of the write-up.
-- **Experiment 5** (`docs/experiment_5_alive_at_init.md`, code `experiments/exp5_alive_at_init/`, done): the share of TopK features alive at initialisation for vocabulary sizes from 2,000 to 50,257 and $k$ from 1 to 256, with no training. It gives the starting $k$ needed for a given share alive as the vocabulary grows (Part 3 of the write-up).
-- **Experiment 6** (`docs/experiment_6_hull_vertices.md`, code `experiments/exp6_hull_vertices/`, done): whether a ReLU encoder can output exact one-hot codes, which holds for a token exactly when its embedding is a vertex of the convex hull of the table. Result: every GPT-2 embedding is a vertex, and the margin of separation predicts which tokens Experiment 2 recovered.
-- **Experiment 7** (`docs/experiment_7_topk_lr_steps.md`, code `experiments/exp7_topk_lr_steps/`, done): the best TopK annealing schedule on the 2,000-token subvocabulary, with 4,000 to 128,000 training steps, half and twice the learning rate, and three seeds at two lengths. Result: progress depends on learning rate × steps, and recovery rises by about 3 points per doubling of training, from 75% to 89%, with no sign of levelling off.
-- **Experiment 8** (`docs/experiment_8_topk_sizes.md`, code `experiments/exp8_topk_sizes/`, done): TopK annealing on the 5,000, 10,000 and 20,000 most frequent tokens, starting from the $k$ that leaves 93% of features alive, with $2V$ steps so that every size gets the same training per token (Part 3a of the write-up). Result: 74% to 77% recovered at every size, as on the subset.
-- **Experiment 9** (`docs/experiment_9_relu_sizes.md`, code `experiments/exp9_relu_sizes/`, done): L1 ReLU SAEs at 5,000, 10,000 and 20,000 tokens and several values of $\lambda$ (Part 3b). Result: with steps in proportion to $V$, recovery as a function of $\lambda$ is the same at every size, to within a few points. Runs keep their checkpoints so that they can be extended.
-- **Experiment 10** (`docs/experiment_10_relu_no_penalty.md`, code `experiments/exp10_relu_no_penalty/`, done): a control with no sparsity penalty ($\lambda = 0$) on the 2,000-token subvocabulary, otherwise as Experiment 4's best cell. Result: no token recovered; codes stay dense (about 670 active features per token).
-
-`docs/failure_modes.md` keeps a running table of the attempts that failed to recover the embeddings, with an interpretation of each. `docs/write_up_plan.md` sets out how the write-up will be framed.
-
-Shared choices:
-
-- Only the random-start SAE is run. The embedding-initialised control and the classical dictionary-learning baseline from the original plan are dropped for now.
-- Token frequency plays no part in the design. Training tokens are sampled uniformly from the whole vocabulary, and no tokens are excluded from training or analysis.
-- Frequency weighting is kept as a toggle, off by default. With `--frequency-weighted`, tokens are sampled in proportion to their English Wikipedia count (GPT-2 tokenisation), and the evaluation is weighted the same way. Zero-count tokens are then never sampled.
-
-## Layout
+## Repository layout
 
 ```
-sae_raw/              shared library code
-  data.py             GPT-2 embedding table, Wikipedia token counts, diagnostics, subsets
-  model.py            Top1SAE (Experiment 1), ReLUSAE (Experiment 2) and TopKSAE
-                      (Experiment 3): shared initialisation and unit-norm decoder
-  train.py            samplers, k schedules, and the resumable training loop
-                      (checkpoints, heartbeat)
-  evaluation.py       full-vocabulary summary, revival of dead features, decoder recovery
-  grid.py             grid searches on subvocabularies (Experiments 4, 7, 8 and 9): one
-                      resumable run per cell, recovery along each run, summary.csv;
-                      one grid per vocabulary size; extending finished runs
-  run.py              the runner behind the experiment scripts: data, timing, training,
-                      analysis, logging
-experiments/
-  exp1_top1/run.py         runs all of Experiment 1
-  exp2_l1_relu/run.py      runs all of Experiment 2
-  exp3_k_annealing/run.py  runs all of Experiment 3
-  exp4_relu_grid/run.py    runs all of Experiment 4
-  exp5_alive_at_init/run.py  measures features alive at initialisation (Experiment 5)
-  exp6_hull_vertices/run.py  tests which embeddings are convex-hull vertices (Experiment 6)
-  exp7_topk_lr_steps/run.py  runs all of Experiment 7
-  exp8_topk_sizes/run.py     runs all of Experiment 8
-  exp9_relu_sizes/run.py     runs all of Experiment 9 (--sizes, --extend)
-  exp10_relu_no_penalty/run.py  the lambda = 0 control (Experiment 10)
+paper/                the paper: main.tex, refs.bib, main.pdf, figures/
+  make_figures.py     makes every figure in paper/figures/ from the results in runs/
+sae_raw/              library code shared by the experiments
+  data.py             GPT-2 embedding table, Wikipedia token counts, subvocabularies
+  model.py            Top1, TopK and L1 ReLU SAEs with a unit-norm decoder
+  train.py            resumable training loop, k schedules, samplers
+  evaluation.py       full-vocabulary evaluation: loss, alive features, decoder recovery
+  run.py              runner for single long runs (Experiments 1 to 3)
+  grid.py             runner for grids of shorter runs (Experiments 4 and 7 to 10)
+experiments/expN_*/   one folder per experiment, each with a single run.py
 scripts/
-  prepare_data.py     prepare the data on its own (the experiment scripts also do this)
-  run_overnight.py    runs several experiments one after another, unattended (default:
-                      the outstanding runs)
-docs/
-  experiment_1_top1.md         plan: how many dead Top1 features revive?
-  experiment_1_results.md      results and interpretation of Experiment 1
-  experiment_2_l1_relu.md      plan: L1-penalised ReLU SAE
-  experiment_3_k_annealing.md  plan: TopK with k lowered to 1 during training
-  experiment_4_relu_grid.md    plan: grid of L1 ReLU SAEs on the subvocabulary
-  experiment_5_alive_at_init.md  features alive at initialisation, by vocabulary size
-  experiment_6_hull_vertices.md  one-hot codes and the convex hull of the embeddings
-  experiment_7_topk_lr_steps.md  TopK annealing with more steps and other learning rates
-  experiment_8_topk_sizes.md     TopK annealing at intermediate vocabulary sizes
-  experiment_9_relu_sizes.md     L1 ReLU SAEs at intermediate vocabulary sizes
-  experiment_10_relu_no_penalty.md  control: a ReLU SAE with no sparsity penalty
-  failure_modes.md             running table of failed attempts and why they failed
-  write_up_plan.md             full write-up plan: framing, results tables, appendices
-  write_up_outline.md          streamlined outline of the write-up, by conceptual point
-  planning/                    original planning documents, kept unchanged as a record
-paper/
-  main.tex, refs.bib  the write-up (compiled to main.pdf)
-  make_figures.py     makes every figure in paper/figures/ from runs/
+  prepare_data.py     downloads the embedding table (run automatically when needed)
+  code_spread.py      active features per token in the best ReLU SAEs (paper Table 7)
+runs/                 results: one folder per experiment (CSV and JSON tables)
+data/                 token counts used to choose the subvocabularies
+docs/                 working notes: one document per experiment (see docs/README.md)
 tests/                pytest suite
-data/                 generated, not tracked by git
-runs/                 generated, not tracked by git
+prompt_history/       the full conversation in which this project was developed
 ```
 
 ## Setup
 
 ```
-pip install -e ".[dev,train]"
+pip install -e ".[train,paper,dev]"
 pytest
 ```
 
-The data is prepared by the experiment scripts if `data/` is missing, or on its own with `python scripts/prepare_data.py`. This downloads GPT-2 and reads English Wikipedia (snapshot `20231101.en`) directly from its parquet shards. Row groups of about 1,000 articles are visited in a seeded random order across all shards, and only the ones used are downloaded. By default it counts about 200M tokens (`--max-tokens` changes this). The counts are used only by the frequency toggle and by `--subset`.
+The code runs on a CPU. It was developed with Python 3.12 and PyTorch 2.2.2 on an Intel Mac, and also runs with recent versions. All commands below are run from the repository root.
 
-Data preparation does not need torch. Training does. On an Intel Mac, PyTorch wheels stop at version 2.2.2 (Python 3.12 or earlier, NumPy below 2), so the training code avoids newer torch APIs.
+**Data.** `python scripts/prepare_data.py` downloads GPT-2 Small's input embedding table to `data/embeddings.npy` (148 MB, not tracked). Every experiment script does this itself if the file is missing. The subvocabularies are the $V$ most frequent tokens in English Wikipedia (snapshot `20231101.en`). The counts, from a seeded random sample of about 200 million tokens, are tracked in `data/token_counts.npy`, with their provenance in `data/meta.json`. `--recount` counts them again. Frequency only chooses the subvocabularies: training samples tokens uniformly, and evaluation weights every token equally.
 
-## Running an experiment
+## Reproducing the paper
 
-Each experiment runs from a single script:
+**Figures.** The results of every run are tracked under `runs/`, so the figures can be rebuilt without training anything:
 
 ```
-caffeinate -i python experiments/exp1_top1/run.py
-caffeinate -i python experiments/exp2_l1_relu/run.py
-caffeinate -i python experiments/exp3_k_annealing/run.py
-caffeinate -i python experiments/exp4_relu_grid/run.py
-caffeinate -i python experiments/exp7_topk_lr_steps/run.py
-caffeinate -i python experiments/exp8_topk_sizes/run.py
-caffeinate -i python experiments/exp9_relu_sizes/run.py --sizes 5000 10000
+python paper/make_figures.py
+cd paper && latexmk -pdf main.tex
 ```
 
-`caffeinate -i python scripts/run_overnight.py` runs a sequence of experiments one after another, for an unattended night (used for the Experiment 7 extension and Experiment 8). Ctrl-C stops it without starting the later experiments, and running it again resumes. `--plan` chooses another sequence (see `--help`).
+A few numbers in the figure script come from runs whose logs are not tracked (the early 2k-subset pilots, and summary tables from the experiment documents); the script marks each one.
 
-Run the scripts from the repository root, since `data/` and `runs/` are relative paths. Run one experiment at a time: each one sizes itself to the whole machine, so two at once would each take about twice as long. `caffeinate -i` keeps the Mac awake. Each script does every step:
+**Experiments.** Each experiment runs from a single command. Times are for the laptop used (Intel CPU), except those marked as measured in a cloud sandbox. Experiments 1 to 3 use batch size 4,096 (Experiment 2: 1,024) and seed 0 by default, so the commands above repeat the paper's runs.
 
-1. It prepares the data if `data/` does not exist yet.
-2. It times a few training steps on this machine and chooses the number of steps that fits in `--hours` (default 10, including evaluations and the final analysis). `--steps` overrides this. For Experiment 3 it times each value of $k$ in the schedule, since steps at large $k$ are slower.
-3. It trains, with a full-vocabulary evaluation at step 0 and then `--n-evals` more (default 20).
-4. It analyses the result and logs the experiment's conclusion.
+| Experiment | Command | Time | Paper |
+|---|---|---|---|
+| 1. Top1, full table | `python experiments/exp1_top1/run.py --steps 16820` | 8 h | Section 3.2 |
+| 2. L1 ReLU ($\lambda = 0.3$), full table | `python experiments/exp2_l1_relu/run.py --steps 85100` | 47 h | Sections 4, 5.5 |
+| 3. TopK annealed to 1, full table | `python experiments/exp3_k_annealing/run.py --steps 15980` | 10 h | Sections 3, 5.5 |
+| 4. L1 ReLU grid, 2k subset | `python experiments/exp4_relu_grid/run.py` | 10 h | Sections 4.3, 4.4 |
+| 5. Alive at initialisation | `python experiments/exp5_alive_at_init/run.py` (and `--order random`, see its docstring) | 15 min (sandbox) | Sections 5.3, 5.4 |
+| 6. Convex-hull vertices | `python experiments/exp6_hull_vertices/run.py` | 25 min (sandbox) | Section 4.2, Appendix B |
+| 7. TopK with more training, 2k subset | `python experiments/exp7_topk_lr_steps/run.py` | 8 h | Section 3 |
+| 8. TopK at 5k, 10k, 20k tokens | `python experiments/exp8_topk_sizes/run.py` | 5 h | Section 5.3 |
+| 9. L1 ReLU at 5k, 10k, 20k tokens | `python experiments/exp9_relu_sizes/run.py` | 17 h | Section 5.2 |
+| 10. No penalty, 2k subset | `python experiments/exp10_relu_no_penalty/run.py` | 20 min (sandbox) | Section 4.4 |
 
-`--help` lists all options. Experiment 2 also takes `--l1-coef`, and Experiment 3 takes `--stages` to change the schedule.
+Experiment 6 also tabulates recovery against margin if Experiment 2's final model is in `runs/exp2/`. After Experiments 2 and 4, `python scripts/code_spread.py` gives the number of active features per token in the best ReLU SAEs, with and without a 10% cutoff (Section 4.3, Appendix E.2).
 
-**Interrupting and resuming.** A checkpoint is saved every 10 minutes. On Ctrl-C the script finishes the current step, saves a checkpoint and stops. A second Ctrl-C aborts without saving. Running the same command again resumes from the checkpoint with the settings saved in the run directory, and gives the same result as an uninterrupted run. `--fresh` discards the earlier run and starts again. `--extend-steps N` or `--extend-hours H` continues a run past its planned end, from its checkpoint; the earlier analysis is kept as `analysis_step<N>.json`. For a run with a $k$ schedule (Experiment 3), the part of the schedule not yet reached is stretched over the new length. Give `--extend-*` once only. To resume after an interrupt, use the plain command, since repeating the flag extends the run again.
+**Pilots on the 2k subset.** The early TopK pilots (fixed $k$ and the annealing schedules, Figure 2) used the scripts of Experiments 1 and 3 on the 2,000 most frequent tokens. For example:
 
-**Logging.** Everything goes to the console and to `run.log` in the run directory. A heartbeat line every minute shows the step, the current $k$ (Experiment 3), the time per step, the elapsed time, the ETA for the whole run (with its clock time), the minibatch loss, and the last evaluation's relative loss, active features per token, alive count and revival. Each evaluation is also logged in full.
+```
+# Top1 throughout, 4,000 steps
+python experiments/exp1_top1/run.py --subset 2000 --steps 4000 --batch-size 512 --run-dir runs/pilots/top1
+# fixed k = 16, 3,000 steps
+python experiments/exp3_k_annealing/run.py --subset 2000 --steps 3000 --batch-size 512 --stages 16:1 --run-dir runs/pilots/k16
+# halving from k0 = 32, reaching k = 1 at 80% of training
+python experiments/exp3_k_annealing/run.py --subset 2000 --steps 4000 --batch-size 512 \
+    --stages 32:0.16,16:0.16,8:0.16,4:0.16,2:0.16,1:0.2 --run-dir runs/pilots/halving32
+```
 
-Experiments 4 and 7 to 9 run several shorter cells and write grid directories instead (`runs/exp4/`, `runs/exp7/`, and one folder per vocabulary size under `runs/exp8/` and `runs/exp9/`, each with one folder per cell and a `summary.csv`); their docs describe them. Experiment 9's runs can be extended with `--extend CELL STEPS`, which sets the run's new total. For Experiments 1 to 3:
+The results of these pilots are recorded in `docs/experiment_3_k_annealing.md`, not as tables under `runs/`. The AuxK pilots (Section 3.4) used exploratory code that was not kept.
 
-**Run directory** (`--run-dir`, default `runs/exp1`, `runs/exp2` or `runs/exp3`, about 4.5 GB with snapshots):
+## How the scripts work
 
-- `config.json`: the settings, including the measured step and evaluation times;
-- `init.pt`: the parameters at initialisation, saved before the first step;
-- `checkpoint.pt`: everything needed to resume (about three times the model size);
-- `model.pt`: the parameters at the latest evaluation;
-- `snapshots/model_step<N>.pt`: the parameters kept at 10 evaluations spread evenly over the run, about 310 MB each at full scale. An extension keeps 10 more, spread over its new steps. `--n-snapshots` changes the number, and `config.json` lists the steps;
-- `eval_log.csv`: one row per evaluation;
-- `analysis.json`: the final report;
-- `run.log`: the full log, appended to on every invocation.
+**Interrupting and resuming.** Every script saves a checkpoint every 10 minutes. On Ctrl-C it finishes the current step, saves and stops; a second Ctrl-C aborts. Running the same command again resumes and gives the same result as an uninterrupted run. A heartbeat line every minute shows progress and the ETA, and everything is logged to `run.log` in the run's folder.
 
-Each evaluation reports:
+**Single runs (Experiments 1 to 3).** Without `--steps`, the script times a few steps and fits the run to `--hours` (default 10). `--extend-steps N` continues a finished run; for a $k$ schedule, the part not yet reached is stretched over the new length. `--subset N` trains on the $N$ most frequent tokens with $m = N$. `--help` lists all options. Each run folder holds `config.json`, `eval_log.csv` (one row per evaluation) and `analysis.json` (the final report), and, while it runs, the model weights and checkpoints.
 
-- `k`: the number of features selected per token at that point (empty for the L1 model);
-- `mse` and `rel_loss`: the reconstruction error, and that error relative to reconstructing zero (1 means no better than zero);
-- `mean_l0`: the mean number of active features per token (at most $k$);
-- `n_alive`: features active on at least one token, and `n_zero_code`: tokens with no active feature;
-- `n_dead_at_init`, `n_revived` and `revival_pct`: features that were dead at step 0, and how many of them have since received gradient.
+**Grids (Experiments 4 and 7 to 10).** One folder per cell, each with `eval_log.csv` and `result.json`, and a `summary.csv` with one row per cell and evaluation. Experiments 8 and 9 run one grid per vocabulary size (`--sizes`). Experiment 9's runs keep their checkpoints so they can be extended with `--extend CELL STEPS`.
 
-A feature counts as revived if its parameters differ from their initial values by more than $10^{-5}$. A feature that is never active receives no gradient, so it stays at its initial values up to rounding in the decoder renormalisation (around $10^{-7}$). One Adam step moves a parameter by about the learning rate.
-
-The final analysis recomputes revival from `init.pt` and `model.pt`. It also measures decoder recovery: for each token, the decoder row with the highest cosine to its normalised embedding. A token counts as recovered if that row is a mutual nearest neighbour and the cosine is above a threshold (0.9 and 0.99). A full one-to-one assignment over a $V \times m$ matrix is too large, so mutual nearest neighbours stand in for it.
-
-`--subset N` trains on the N most frequent tokens with $m = N$, for quick debugging runs (use a separate `--run-dir`). The learning rate defaults to $2\times10^{-4}/\sqrt{m/2^{14}}$, about $1.1\times10^{-4}$ at $m = 50{,}257$. The $1/\sqrt{m}$ scaling follows Gao et al. (2024). The constant is our normalisation, since the paper does not state one (see `docs/write_up_plan.md`).
+**Evaluation fields.** `rel_loss` is the squared reconstruction error relative to the squared norm of the tokens. `mean_l0` is the mean number of active features per token. `n_alive` counts features active on at least one token. `n_recovered_cos0.9` and `n_recovered_cos0.99` count recovered tokens. For TopK runs, `n_top1` counts features that are the top feature of some token: the features that would survive a drop to $k = 1$.
 
 ## Model choices
 
-- **Shared:** random unit-norm Gaussian decoder rows, encoder taken to be the transpose of the decoder, encoder bias zero. No information from the embeddings is used, and all models start from identical parameters for the same seed. The gradient component along each decoder row is removed before each optimiser step, and rows are renormalised after it. Adam with default betas and epsilon, one run per seed, no sweep.
-- **Top1** (`Top1SAE`, Experiment 1): the largest ReLU pre-activation wins, and its score is the coefficient. If no pre-activation is positive, the code and the reconstruction are zero. Ties go to the first index. Loss: MSE.
-- **TopK** (`TopKSAE`, Experiment 3): the $k$ largest pre-activations are selected and passed through a ReLU, so a selected feature with a non-positive pre-activation is inactive. With $k = 1$ it matches Top1. In Experiment 3, $k$ follows a schedule (`k_schedule` in `sae_raw/train.py`). Loss: MSE.
-- **L1 ReLU** (`ReLUSAE`, Experiment 2): $f(x) = \mathrm{ReLU}(W_{\mathrm{enc}}x + b_{\mathrm{enc}})$, and the loss is MSE plus $\lambda \sum_j f_j$. The decoder is dense, so each step costs more than a Top1 step at the same batch size.
-- The exact solution ($W_{\mathrm{dec}} = W_{\mathrm{enc}} = $ normalised embeddings) is only used in tests.
+- **Shared:** $m = V$ features, unit-norm decoder rows, no decoder bias. Decoder rows start as random Gaussian directions, the encoder starts as the transpose of the decoder, and the encoder bias starts at zero; no information from the embeddings is used. The gradient component along each decoder row is removed before each step, and rows are renormalised after it.
+- **Training:** Adam at a constant learning rate $2\times10^{-4}/\sqrt{m/2^{14}}$ (the "Gao rate"). The $1/\sqrt{m}$ scaling follows Gao et al. (2024); the constant is our normalisation. Minibatches are drawn uniformly from the vocabulary, with replacement. One seed per run unless stated.
+- **Top1 / TopK:** the $k$ largest pre-activations are kept and passed through a ReLU. In Experiment 3 and later TopK runs, $k$ follows a schedule down to 1.
+- **L1 ReLU:** coefficients $f = \mathrm{ReLU}(W_{\mathrm{enc}}x + b_{\mathrm{enc}})$, loss $\lvert x - \hat x\rvert^2 + \lambda \sum_j f_j$.
+- **Recovery:** mutual nearest neighbours between tokens and decoder rows by cosine, at thresholds 0.9 and 0.99. A full one-to-one assignment is too large to compute at $V = 50{,}257$.
 
-## Possible future directions
+## Prompt history
 
-Ideas to revisit after the experiments above. Each one changes the training recipe or the setting, so each would be reported as a labelled ablation.
+This project was developed in collaboration with Claude (Anthropic). `prompt_history/prompt_history.pdf` is the full conversation, kept for transparency.
 
-- **Encoder-side mean centring.** Initialise the encoder bias as $b_{\mathrm{enc},j} = -w_j^\top\mu$, where $\mu$ is the data mean, and keep the decoder bias at zero. This removes the shared mean component that makes a few features win most tokens. It leaves the target dictionary unchanged.
+## Licence
 
-## Status
-
-- [x] Data preparation
-- [x] Top1, TopK and L1 ReLU models
-- [x] Resumable training loop with revival tracking, checkpoints, heartbeat and $k$ schedules
-- [x] Final analysis: revival and decoder recovery
-- [x] Experiment 1: script and full run (results in `docs/experiment_1_results.md`)
-- [x] Experiment 3: schedule O chosen (128 down to 4 sharing the first 40%, then 2 for 40% and 1 for 20%), and script written
-- [x] Experiment 3 full run (schedule O, 15,980 steps)
-- [x] Experiment 4: script written
-- [x] Experiment 4 grid run
-- [x] Experiment 5: alive at initialisation by vocabulary size
-- [x] Experiment 6: one-hot codes and convex-hull vertices
-- [x] Experiment 7: script written
-- [x] Experiment 7 run (first five cells)
-- [x] Experiment 7 extension (seeds 1 and 2 at 8,000 and 16,000 steps; 32,000 to 128,000 steps)
-- [x] Experiments 8 and 9: scripts written
-- [x] Experiment 8 run
-- [x] Experiment 10: the lambda = 0 control
-- [x] Experiment 9 at 5,000 and 10,000 tokens (night 1)
-- [x] Experiment 9 at 20,000 tokens (night 2)
-- [x] Experiment 2: $\lambda = 0.3$ chosen by a subset sweep, and script written
-- [x] Experiment 2 full run (85,100 steps)
-- [x] Write-up: `paper/main.pdf`
-
-## Building the paper
-
-```
-python paper/make_figures.py      # needs the results under runs/
-cd paper && latexmk -pdf main.tex
-```
+MIT; see `LICENSE`.

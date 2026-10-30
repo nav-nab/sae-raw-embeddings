@@ -3,7 +3,8 @@
 One command runs everything:
 
     python experiments/exp5_alive_at_init/run.py                 # most frequent tokens
-    python experiments/exp5_alive_at_init/run.py --order random  # random tokens (control)
+    python experiments/exp5_alive_at_init/run.py --order random \
+        --sizes 2000 5000 10000 20000 30000 40000 50257          # random tokens (control)
 
 For each vocabulary size V it takes V tokens of the embedding table and builds
 the randomly initialised TopK SAE with m = V for each seed. It then counts the
@@ -20,8 +21,11 @@ Each (V, seed) needs one pass: the rank at which each feature first appears,
 with a positive pre-activation, in some token's top 256 gives its alive status
 at every smaller k.
 
-Results go to <out-dir>/alive_at_init_<order>.csv (one row per V, seed and k),
-and a summary table of the mean over the seeds is printed.
+Results go to <out-dir>/alive_at_init_<order>.csv (one row per V, seed and k).
+The script then prints, for target shares of 90%, 93%, 95% and 97%, the
+smallest k whose share alive (mean over the seeds) reaches the target at each
+V, and a power-law fit k = a V^b to these values. For the most frequent
+tokens at 93% this gives k = 1.37 V^0.405, the fit used in the paper.
 """
 
 import argparse
@@ -97,12 +101,29 @@ def main(argv=None):
         writer.writerows(rows)
     mean = {(V, k): np.mean([r["share"] for r in rows if r["V"] == V and r["k"] == k])
             for V in args.sizes for k in ks}
+    targets = (0.90, 0.93, 0.95, 0.97)
+    smallest = {V: [next((k for k in ks if mean[V, k] >= t), None) for t in targets]
+                for V in args.sizes}
     print(f"\nOrder {args.order}. Smallest k with the mean share alive at or above each target:")
     print("     V   90%   93%   95%   97%")
     for V in args.sizes:
-        thr = [next((k for k in ks if mean[V, k] >= t), None) for t in (0.90, 0.93, 0.95, 0.97)]
-        print(f"{V:>6} " + "".join(f"{t:>6}" if t else "     -" for t in thr))
+        print(f"{V:>6} " + "".join(f"{t:>6}" if t else "     -" for t in smallest[V]))
+    if len(args.sizes) > 1:
+        print("\nPower-law fits k = a V^b (least squares on log k against log V):")
+        for i, t in enumerate(targets):
+            a, b, rms = power_law_fit(args.sizes, [smallest[V][i] for V in args.sizes])
+            print(f"  {t:.0%} alive: k = {a:.2f} V^{b:.3f}, RMS relative error {100 * rms:.1f}%")
     return rows
+
+
+def power_law_fit(sizes, ks):
+    """Fit k = a V^b by least squares in log space. Returns (a, b, RMS relative error)."""
+    pairs = [(V, k) for V, k in zip(sizes, ks) if k is not None]
+    V, k = (np.array(x, dtype=float) for x in zip(*pairs))
+    b, log_a = np.polyfit(np.log(V), np.log(k), 1)
+    a = float(np.exp(log_a))
+    rms = float(np.sqrt(np.mean((a * V ** b / k - 1) ** 2)))
+    return a, float(b), rms
 
 
 if __name__ == "__main__":

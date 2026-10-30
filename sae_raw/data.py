@@ -185,10 +185,10 @@ def count_diagnostics(counts):
 
 
 def select_subset(E, counts, n):
-    """Rows of the n most frequent tokens, for small debugging runs.
+    """Rows of the n most frequent tokens: the subvocabularies of the experiments.
 
     Returns (E_sub, counts_sub, token_ids), ordered from most to least frequent.
-    A subset run uses dictionary size m = n.
+    A subset run uses dictionary size m = n. Ties keep the vocabulary order.
     """
     ids = np.argsort(-counts, kind="stable")[:n]
     return E[ids], counts[ids], ids
@@ -203,17 +203,31 @@ def is_prepared(data_dir="data"):
     return all((data_dir / f).exists() for f in (EMBEDDINGS_FILE, COUNTS_FILE, META_FILE))
 
 
-def prepare(data_dir="data", max_tokens=200_000_000, batch_size=1000, seed=0, log=print):
+def prepare(data_dir="data", max_tokens=200_000_000, batch_size=1000, seed=0, recount=False,
+            log=print):
     """Extract the embedding table, count Wikipedia tokens and save both with diagnostics.
 
-    Writes embeddings.npy, token_counts.npy and meta.json to data_dir.
+    Writes embeddings.npy, token_counts.npy and meta.json to data_dir. The
+    repository ships token_counts.npy and meta.json, so by default only the
+    embedding table is downloaded and the shipped counts are kept. With
+    recount=True, or if the counts are missing, Wikipedia is counted again.
     """
+    data_dir = Path(data_dir)
     log("Extracting GPT-2 embedding table ...")
     E, revision = extract_gpt2_embeddings()
     log(f"  shape {E.shape}, dtype {E.dtype}, revision {revision}")
     emb_diag = embedding_diagnostics(E)
     for k, v in emb_diag.items():
         log(f"  {k}: {v}")
+
+    if not recount and (data_dir / COUNTS_FILE).exists() and (data_dir / META_FILE).exists():
+        meta = json.loads((data_dir / META_FILE).read_text())
+        if meta.get("gpt2_revision") != revision:
+            log(f"  note: the token counts were made with GPT-2 revision {meta.get('gpt2_revision')}")
+        data_dir.mkdir(parents=True, exist_ok=True)
+        np.save(data_dir / EMBEDDINGS_FILE, E)
+        log(f"Saved the embedding table to {data_dir}/ and kept the existing token counts.")
+        return
 
     log(f"Counting tokens in Wikipedia (up to {max_tokens:,}) ...")
     t0 = time.time()
@@ -260,7 +274,7 @@ def load_prepared(data_dir="data", subset=0):
     """Return (E, counts) as saved by scripts/prepare_data.py.
 
     If subset > 0, return only the rows of the subset most frequent tokens
-    (see select_subset), as used by --subset debugging runs.
+    (see select_subset), as used by --subset runs.
     """
     data_dir = Path(data_dir)
     E, counts = np.load(data_dir / EMBEDDINGS_FILE), np.load(data_dir / COUNTS_FILE)

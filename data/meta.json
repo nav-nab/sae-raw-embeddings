@@ -1,0 +1,40 @@
+{
+  "gpt2_repo": "openai-community/gpt2",
+  "gpt2_revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+  "wikipedia_dataset": "wikimedia/wikipedia",
+  "wikipedia_config": "20231101.en",
+  "wikipedia_sample_seed": 0,
+  "wikipedia_sampling": "random row groups (about 1000 articles each) across all shards",
+  "n_articles_counted": 276000,
+  "embedding_diagnostics": {
+    "vocab_size": 50257,
+    "dim": 768,
+    "n_zero_norm": 0,
+    "norm_min": 2.453748941421509,
+    "norm_median": 3.947258949279785,
+    "norm_mean": 3.958536148071289,
+    "norm_max": 6.315505027770996,
+    "nn_cos_median": 0.685351550579071,
+    "nn_cos_p99": 0.8702474236488342,
+    "nn_cos_max": 0.9977341890335083,
+    "n_nn_cos_above_0.99": 57,
+    "n_nn_cos_above_0.999": 0
+  },
+  "count_diagnostics": {
+    "n_tokens_counted": 200077111,
+    "n_zero_count": 474,
+    "n_count_below_10": 1338,
+    "mass_top_1000": 0.6185190768773146,
+    "mass_top_10000": 0.8881771538574444,
+    "n_tokens_for_90pct_mass": 11176,
+    "n_tokens_for_99pct_mass": 33968
+  },
+  "python": "3.12.2",
+  "libraries": {
+    "numpy": "1.26.4",
+    "safetensors": "0.8.0",
+    "tokenizers": "0.22.2",
+    "pyarrow": "16.1.0",
+    "huggingface_hub": "0.36.2"
+  }
+}

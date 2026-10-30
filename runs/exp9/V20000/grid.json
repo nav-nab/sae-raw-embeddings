@@ -1,0 +1,48 @@
+{
+  "experiment": "experiment_9_relu_sizes",
+  "data_dir": "data",
+  "subset": 20000,
+  "V": 20000,
+  "seed": 0,
+  "max_tokens_m": 8,
+  "eval_tokens_m": 0.5,
+  "base_lr": 0.00018101933598375618,
+  "checkpoint_minutes": 10.0,
+  "heartbeat_seconds": 60.0,
+  "device": "cpu",
+  "cells": [
+    {
+      "name": "V20000_lam1",
+      "l1_coef": 1.0,
+      "steps": 20000,
+      "eval_every": 500,
+      "lr_factor": 1.0,
+      "batch_size": 256,
+      "keep_checkpoint": true
+    },
+    {
+      "name": "V20000_lam0.3",
+      "l1_coef": 0.3,
+      "steps": 40000,
+      "eval_every": 1000,
+      "lr_factor": 1.0,
+      "batch_size": 256,
+      "keep_checkpoint": true
+    },
+    {
+      "name": "V20000_lam0.1",
+      "l1_coef": 0.1,
+      "steps": 80000,
+      "eval_every": 2000,
+      "lr_factor": 1.0,
+      "batch_size": 256,
+      "keep_checkpoint": true
+    }
+  ],
+  "started": "2026-10-27 23:16",
+  "step_seconds": {
+    "256": 0.2279
+  },
+  "step_seconds_by_k": {},
+  "eval_seconds": 6.58
+}
