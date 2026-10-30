@@ -679,7 +679,7 @@ $V$ & $k = 1$ & 8 & 32 & 64 & 128 & 256 \\
 50,257 & 21\% & 52\% & 77\% & 87\% & 93.4\% & 97.3\% \\
 \bottomrule
 \end{tabular}
-\caption{Share of features alive at initialisation, for subvocabularies of the most frequent tokens. Means of two seeds, which differ by at most 2 percentage points. The power law $k_0 \approx 1.37\,V^{0.405}$ fits the $k$ for 93\% alive over 27 sizes with an RMS error of 5.5\%. For other targets the fits are $1.23\,V^{0.384}$ (90\%), $1.50\,V^{0.421}$ (95\%) and $1.60\,V^{0.451}$ (97\%).}
+\caption{Share of features alive at initialisation, for subvocabularies of the most frequent tokens. Means of two seeds, which differ by at most 2 percentage points. The power law $k_0 \approx 1.37\,V^{0.405}$ fits the $k$ for 93\% alive over 27 sizes with an RMS error of 5.6\%. For other targets the fits are $1.24\,V^{0.384}$ (90\%), $1.50\,V^{0.422}$ (95\%) and $1.59\,V^{0.453}$ (97\%).}
 \label{tab:init}
 \end{table}
 
@@ -700,7 +700,7 @@ One could argue that a feature with a tiny coefficient should not count as used.
 
 If the decoder rows are roughly orthogonal, a feature with coefficient $f$ contributes about $(f/f_{\max})^2$ of the reconstruction's squared norm. A cutoff at $f \ge 0.1\,f_{\max}$ therefore drops only features that contribute about 1\% or less.
 
-With this cutoff, the share of tokens using one feature changes by at most 2 percentage points in every row of Table~\ref{tab:relu-best}. The cutoff mainly trims the tail. In the full-scale run, the share using four or more features falls from 5.4\% to 2.9\%, and the mean from 1.37 to 1.27. The secondary coefficients are mostly not small: their median is 20\% to 45\% of the main coefficient, depending on the run.
+With this cutoff, the share of tokens using one feature changes by at most 2 percentage points in every row of Table~\ref{tab:relu-best}. The cutoff mainly trims the tail. In the full-scale run, the share using four or more features falls from 5.4\% to 2.9\%, and the mean from 1.37 to 1.27. The secondary coefficients are mostly not small: their median is 16\% to 45\% of the main coefficient, depending on the run.
 
 \subsection{Time to sparsify}
 
