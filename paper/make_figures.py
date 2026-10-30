@@ -92,7 +92,7 @@ def log2_ticks(ax, values, axis="x"):
 def exp4():
     d = pd.read_csv(RUNS / "exp4" / "summary.csv")
     d["gao_steps"] = d.step * d.lr_factor
-    d["epochs"] = d.tokens_m * 1e6 / SUB_V
+    d["epochs"] = d.tokens_m * 2 ** 20 / SUB_V  # the grid counts "millions" of 2^20 tokens
     return d
 
 

@@ -29,8 +29,8 @@ Finally, Experiment 2's recovery (cosine above 0.9) is tabulated against the own
 
 The tokens that fail the own-direction test have shorter embeddings than average (median norm 3.25, against 3.95 for the table). They fall into two groups:
 
-- **115 tokens, margin 0.32 to 0.40.** They are well separated, just not along their own direction. Experiment 2 recovered 63 of them.
-- **57 tokens, margin about 0.037.** 56 of them never occur in the Wikipedia count, so they are probably unused tokens. Experiment 2 recovered 1 of them.
+- **115 tokens, margin 0.13 to 0.40 (median 0.34).** They are well separated, just not along their own direction. Experiment 2 recovered 63 of them.
+- **57 tokens, margin below 0.1** (all but one between 0.037 and 0.042). 56 of them never occur in the Wikipedia count, so they are probably unused tokens. Experiment 2 recovered 1 of them.
 
 **The margin predicts recovery in Experiment 2.**
 

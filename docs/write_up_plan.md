@@ -326,8 +326,8 @@ Every embedding is a vertex of the hull. For 99.66% of tokens, the token's own d
 
 The linear programme bounds $w$ by $\lvert w_i\rvert \le 1$ in each coordinate and maximises $w \cdot x_j + b$. Constraints are added in rounds: the 2,000 tokens that project furthest along $x_j$'s direction come first, then any violated constraints, until none remain. The margin it reports (the gap to the nearest other token along the unit vector $w/\lvert w\rvert$, as a fraction of $\lvert x_j\rvert$) is a lower bound on the best possible margin. The 172 tokens fall into two groups:
 
-- **115 tokens, margin 0.32 to 0.40.** They are well separated, just not along their own direction. Experiment 2 recovered 63 of them.
-- **57 tokens, margin about 0.037.** 56 of them never occur in the Wikipedia count, so they are probably unused tokens. Experiment 2 recovered 1 of them.
+- **115 tokens, margin 0.13 to 0.40 (median 0.34).** They are well separated, just not along their own direction. Experiment 2 recovered 63 of them.
+- **57 tokens, margin below 0.1** (all but one between 0.037 and 0.042). 56 of them never occur in the Wikipedia count, so they are probably unused tokens. Experiment 2 recovered 1 of them.
 
 ## Appendix C: training setup (for the methodology section)
 
