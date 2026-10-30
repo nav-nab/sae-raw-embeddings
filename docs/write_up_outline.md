@@ -103,6 +103,18 @@ The law for $k_0$ depends on which tokens make up the vocabulary. Rarer tokens c
 
 On the full table, ReLU with $\lambda = 0.3$ recovered 93%, and TopK annealing recovered 70%. Both fit what the smaller vocabularies predict for the training they received. *(Experiments 2 and 3.)*
 
+## References to Gao et al. (2024)
+
+Gao et al., "Scaling and evaluating sparse autoencoders" (arXiv:2406.04093), is the closest prior work. Several of our ideas appear there, some of which we found independently. The write-up cites it at each point of overlap:
+
+- **Introduction and Section 1.2.** The trade-off between imposing sparsity and keeping latents alive. Gao et al. report up to 90% dead latents without mitigation.
+- **Setting and methods.** TopK SAEs; unit-norm decoder rows; the encoder initialised along the decoder directions; the learning rate scaled as $1/\sqrt{m}$. Our constant for the Gao rate is our own normalisation, since they give only the scaling.
+- **Section 1.4.** AuxK. In their setting it removes nearly all dead latents. At our drop to $k = 1$ it does not, and the reason (competition for slots, not lack of gradient) is the point of the subsection.
+- **Section 1.5.** Changing $k$: their Multi-TopK and progressive codes vary $k$ in the loss or at test time, while we anneal it during training.
+- **Section 2.1.** L1 shrinkage of coefficients, which appears in our minimiser as $\lvert x\rvert - \lambda/2$.
+- **Sections 2.3 and 2.4.** ReLU SAEs keep few dead latents. Their remark that TopK forces exactly $k$ latents per token, and that a constraint on the mean $L_0$ would be better, matches our near-one-hot codes with a short tail.
+- **Section 3.1.** The training needed grows with the number of latents (their tokens to convergence scale as about $n^{0.6}$; ours, steps scale as $V$). The batch size hardly matters once the other settings are right.
+
 ## Appendices
 
 - **A. Why the embeddings minimise the L1 loss:** the step-by-step argument.
