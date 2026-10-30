@@ -20,7 +20,6 @@
 \newtheorem{proposition}{Proposition}
 \newcommand{\norm}[1]{\lvert #1\rvert}
 \newcommand{\Vsub}{2\text{k}}
-\newcommand{\rev}[1]{{\color{red}#1}}
 
 \title{Can a sparse autoencoder find the token embeddings?\\[2pt]
 \large A toy model of SAE training with a known answer}
@@ -118,7 +117,7 @@ For $k > 1$ this uniqueness is lost. A token can be rebuilt from several feature
 
 A TopK feature receives gradient only on the tokens where it is among the top $k$. A feature that is never selected gets no gradient, so it does not move.\footnote{In principle a dead feature can still revive. It gets no gradient itself, but the features above it keep training, and they can move away from a token and leave it to the dead feature. In practice this never happened in our Top1 runs: on the full table, none of the 39,914 features dead at initialisation revived.} This creates a trade-off between sparsity and keeping features alive, which Gao et al.~\cite{gao2024scaling} also identify as a central difficulty.
 
-\textbf{Top1 from the start fails.} On the full table, only 20.6\% of features are among the top 1 for some token at initialisation. Training a Top1 SAE did not revive a single one of the others. The alive features then collapsed from 10,343 to \rev{246} within the first 5\% of training, and only 16 tokens were recovered. On the 2k subset the picture is similar: 382 features stay alive and 227 tokens are recovered (Figure~\ref{fig:headline}, cross).
+\textbf{Top1 from the start fails.} On the full table, only 20.6\% of features are among the top 1 for some token at initialisation. Training a Top1 SAE did not revive a single one of the others. The alive features then collapsed from 10,343 to 246 within the first 5\% of training, and only 16 tokens were recovered. On the 2k subset the picture is similar: 382 features stay alive and 227 tokens are recovered (Figure~\ref{fig:headline}, cross).
 
 \textbf{A larger fixed $k$ fails the other way} (Figure~\ref{fig:topk-k}a). Raising $k$ keeps more features alive: 89\% at $k = 32$, against 19\% at $k = 1$. But every token then uses all $k$ slots. The dictionary of normalised embeddings still has zero loss, but it is no longer the only one: many other dictionaries rebuild every token exactly from several features. The loss is indifferent between them, so nothing pulls each feature onto a single token. Recovery falls as $k$ rises, and is gone by $k = 16$.
 
@@ -138,7 +137,7 @@ Annealing works (Figure~\ref{fig:topk-k}b). From $k_0 = 64$ or 128, it recovers 
 \begin{itemize}[leftmargin=*]
 \item \textbf{Features die only at the drops in $k$.} Between drops the alive count is flat. Most deaths happen at the final drop, from $k = 2$ to $k = 1$, which costs about 20\% of the alive features in this run. A large $k_0$ also revives the features that start dead: at full scale, $k_0 = 128$ revived all 3,349 of them early in training.
 \item \textbf{Features which die at a drop almost never revive.} Once a feature has died at a drop, it stays dead.
-\item \textbf{The survivors are correct.} At the end, 1,495 tokens are recovered by 1,515 alive features. Across all our \rev{runs annealed from $k_0 \ge 32$}, 96\% to 100\% of the surviving features are recovered tokens. \rev{From a smaller $k_0$ the share is lower, 54\% to 93\%, because fewer features have found their tokens before the drops.} This is the opposite of Top1 from the start, where most survivors match no token. So recovery after annealing is essentially the number of features that survive.
+\item \textbf{The survivors are correct.} At the end, 1,495 tokens are recovered by 1,515 alive features. Across all our runs annealed from $k_0 \ge 32$, 96\% to 100\% of the surviving features are recovered tokens. From a smaller $k_0$ the share is lower, 54\% to 93\%, because fewer features have found their tokens before the drops. This is the opposite of Top1 from the start, where most survivors match no token. So recovery after annealing is essentially the number of features that survive.
 \end{itemize}
 
 \begin{figure}[t]
@@ -148,12 +147,12 @@ Annealing works (Figure~\ref{fig:topk-k}b). From $k_0 = 64$ or 128, it recovers 
 \label{fig:anneal}
 \end{figure}
 
-Which features survive the final drop? At $k = 1$ a feature is active only on tokens for which it is the top feature. So a feature survives the drop only if it is the top feature of at least one token at that moment. The dashed line in Figure~\ref{fig:anneal} counts these features. The alive count falls exactly onto it at the drop: across all our runs this count predicts the survivors to within about \rev{3\%}. The final drop is therefore a competition for a limited number of slots. A feature that comes second for every token it serves dies at once.
+Which features survive the final drop? At $k = 1$ a feature is active only on tokens for which it is the top feature. So a feature survives the drop only if it is the top feature of at least one token at that moment. The dashed line in Figure~\ref{fig:anneal} counts these features. The alive count falls exactly onto it at the drop: across all our runs this count predicts the survivors to within about 3\%. The final drop is therefore a competition for a limited number of slots. A feature that comes second for every token it serves dies at once.
 
 \subsection{An auxiliary loss cannot rescue the dead features}
 \label{sec:auxk}
 
-Gao et al.~\cite{gao2024scaling} revive dead features with an auxiliary loss, AuxK. It trains the dead features to reconstruct the residual $x - \hat{x}$ that the live features leave behind. In their setting it removes nearly all dead features. In ours it does not help. Adding AuxK to the run of Figure~\ref{fig:anneal}a gave 1,476 and 1,478 recovered tokens at two loss weights, against 1,499 for \rev{a run with the same settings} without it. A variant that trains the dead features on the whole token at $k = 1$ gave at most about 40 tokens more, which is within the noise.
+Gao et al.~\cite{gao2024scaling} revive dead features with an auxiliary loss, AuxK. It trains the dead features to reconstruct the residual $x - \hat{x}$ that the live features leave behind. In their setting it removes nearly all dead features. In ours it does not help. Adding AuxK to the run of Figure~\ref{fig:anneal}a gave 1,476 and 1,478 recovered tokens at two loss weights, against 1,499 for a run with the same settings without it. A variant that trains the dead features on the whole token at $k = 1$ gave at most about 40 tokens more, which is within the noise.
 
 The reason is that the problem is competition, not a lack of gradient. Suppose a live feature codes a token $x$ at an angle $\theta$, and a dead feature lines up with the residual. The residual is perpendicular to the live feature, so the dead feature's pre-activation on $x$ is about $\norm{x}\sin\theta$, while the live feature's is about $\norm{x}\cos\theta$. At a cosine of 0.9, that is $0.44\norm{x}$ against $0.9\norm{x}$. The dead feature trains, but it never wins the token. Appendix~\ref{app:auxk} gives the details.
 
@@ -296,7 +295,7 @@ This means the cheap map of Section~\ref{sec:regimes}, computed on 2,000 tokens,
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.85\linewidth]{figures/relu_sizes.pdf}
-\caption{ReLU SAEs at four vocabulary sizes, at the Gao rate and batch size 256, against training steps divided by $V$. Colour gives $\lambda$ and line style gives the size. \rev{At 5,000, 10,000 and 20,000 tokens, each $\lambda$ runs for the same steps per token. The 2,000-token curves come from the ReLU grid and all run to about 16 steps per token.} $\lambda = 0.03$ ran only at the two smallest sizes. Stars: the full-scale run at $\lambda = 0.3$ (batch size 1,024), measured three times during training.}
+\caption{ReLU SAEs at four vocabulary sizes, at the Gao rate and batch size 256, against training steps divided by $V$. Colour gives $\lambda$ and line style gives the size. At 5,000, 10,000 and 20,000 tokens, each $\lambda$ runs for the same steps per token. The 2,000-token curves come from the ReLU grid and all run to about 16 steps per token. $\lambda = 0.03$ ran only at the two smallest sizes. Stars: the full-scale run at $\lambda = 0.3$ (batch size 1,024), measured three times during training.}
 \label{fig:relu-sizes}
 \end{figure}
 
@@ -304,7 +303,7 @@ This means the cheap map of Section~\ref{sec:regimes}, computed on 2,000 tokens,
 
 For TopK, the starting $k_0$ must grow with the vocabulary. At the same $k$, fewer features are alive at initialisation in a larger vocabulary (Figure~\ref{fig:init}a). With 2,000 tokens, $k = 32$ leaves 93\% of features alive. With the full table, it leaves 77\%.
 
-On the 2k subset, recovery levelled off once nearly every feature started alive. We therefore start each size at the $k_0$ that leaves 93\% of features alive at initialisation: 42, 55 and 71 at 5,000, 10,000 and 20,000 tokens. The schedule keeps the shape of Section~\ref{sec:anneal}\rev{: $k_0$ and the powers of 2 below it, down to 4, share the first 40\% of training, then $k = 2$ holds for 40\% and $k = 1$ for the last 20\%. At 5,000 tokens, for example, $k$ goes through 42, 32, 16, 8 and 4, then 2 and 1.} The steps grow in proportion to $V$.
+On the 2k subset, recovery levelled off once nearly every feature started alive. We therefore start each size at the $k_0$ that leaves 93\% of features alive at initialisation: 42, 55 and 71 at 5,000, 10,000 and 20,000 tokens. The schedule keeps the shape of Section~\ref{sec:anneal}: $k_0$ and the powers of 2 below it, down to 4, share the first 40\% of training, then $k = 2$ holds for 40\% and $k = 1$ for the last 20\%. At 5,000 tokens, for example, $k$ goes through 42, 32, 16, 8 and 4, then 2 and 1. The steps grow in proportion to $V$.
 
 Recovery is then the same at every size (Figure~\ref{fig:topk-sizes}): 74\%, 75\% and 77\%, against 75\% on the 2k subset with the same training per token. The dynamics match too. Features die at the same drops and in the same proportions, and about 98\% of the survivors are recovered tokens.
 
@@ -466,7 +465,7 @@ since every term in the sum is at most zero. So the coefficient on $x_j$ cannot 
 
 The first test differs from a tied encoder. With $w_j$ tied to the decoder row $x_j/\norm{x_j}$, the coefficient on $x_j$ forces $b_j = -\lambda/2$. Every other token then needs $w_j \cdot x_i \le \lambda/2$, which is far stricter and depends on $\lambda$. Our SAEs have untied encoders, so only the hull condition matters.
 
-\paragraph{Results for GPT-2.} Table~\ref{tab:hull} gives the results. Every embedding is a vertex of the hull. The 172 tokens of the full table that fail the own-direction test fall into two groups. 115 of them have a linear-programme margin of \rev{0.13 to 0.40 (median 0.34)}: they are well separated, just not along their own direction. The full-scale ReLU run recovered 63 of them. The other 57 have a margin \rev{below 0.1 (all but one between 0.037 and 0.042)}, and 56 of them never occur in our Wikipedia count, so they are probably unused tokens. The full-scale run recovered one of them. Table~\ref{tab:margin} gives the recovery by margin plotted in Figure~\ref{fig:margin}.
+\paragraph{Results for GPT-2.} Table~\ref{tab:hull} gives the results. Every embedding is a vertex of the hull. The 172 tokens of the full table that fail the own-direction test fall into two groups. 115 of them have a linear-programme margin of 0.13 to 0.40 (median 0.34): they are well separated, just not along their own direction. The full-scale ReLU run recovered 63 of them. The other 57 have a margin below 0.1 (all but one between 0.037 and 0.042), and 56 of them never occur in our Wikipedia count, so they are probably unused tokens. The full-scale run recovered one of them. Table~\ref{tab:margin} gives the recovery by margin plotted in Figure~\ref{fig:margin}.
 
 \begin{table}[h]
 \centering
@@ -536,7 +535,7 @@ Gao rate & $5.7\times10^{-4}$ & $3.6\times10^{-4}$ & $2.6\times10^{-4}$ & $1.8\t
 Runs & Model & $V$ & Steps (batch) & LR & Epochs' worth \\
 \midrule
 Fixed $k$ & TopK & 2,000 & 3,000 (512) & 1 & 768 \\
-\leavevmode\rev{Top1,} annealing \rev{and AuxK pilots} & TopK & 2,000 & 4,000 (512) & 1 & 1,024 \\
+Top1, annealing and AuxK pilots & TopK & 2,000 & 4,000 (512) & 1 & 1,024 \\
 Top1, full table & TopK, $k = 1$ & 50,257 & 16,820 (4,096) & 1 & 1,371 \\
 Annealing, full table & TopK, $k_0 = 128$ & 50,257 & 15,980 (4,096) & 1 & 1,302 \\
 More training & TopK, $k_0 = 128$ & 2,000 & 4,000 to 128,000 (512) & $\tfrac12$, 1, 2 & 1,024 to 32,768 \\
@@ -564,7 +563,7 @@ Run & Alive & Rec.\ $>0.9$ & Rec.\ $>0.99$ \\
 \midrule
 \multicolumn{4}{l}{\emph{Fixed $k$}} \\
 Top1, full table & 259 & 16 (0.03\%) & 6 \\
-Top1 \rev{(4,000 steps)} & 382 & 227 (11\%) & 113 \\
+Top1 (4,000 steps) & 382 & 227 (11\%) & 113 \\
 Fixed $k$ = 2, 4, 8, 16, 32 (3,000 steps) & 558--1,778 & 162, 73, 7, 0, 0 & 13, 0, 0, 0, 0 \\
 \midrule
 \multicolumn{4}{l}{\emph{Annealing (4,000 steps)}} \\
@@ -600,7 +599,7 @@ $k_0 = 55$, 10,000 tokens & 7,642 & 7,512 (75\%) & 6,158 (62\%) \\
 $k_0 = 71$, 20,000 tokens & 15,604 & 15,370 (77\%) & 12,826 (64\%) \\
 \bottomrule
 \end{tabular}
-\caption{All TopK runs, on the 2k subset unless stated otherwise. Every annealed run ends at $k = 1$, so every token uses exactly one feature at the end. The 8,000- and 16,000-step seeds range over 1,515 to 1,555 and 1,568 to 1,606 recovered tokens. \rev{The $k = 1$ point of Figure~\ref{fig:topk-k}a is a separate 3,000-step Top1 run, which recovered 222 tokens with 382 alive. The 4,000-step run from $k_0 = 128$ with a long $k = 2$ stage appears twice: as a pilot (1,499 recovered) and rerun with the same settings on another machine in the more-training series (1,495).}}
+\caption{All TopK runs, on the 2k subset unless stated otherwise. Every annealed run ends at $k = 1$, so every token uses exactly one feature at the end. The 8,000- and 16,000-step seeds range over 1,515 to 1,555 and 1,568 to 1,606 recovered tokens. The $k = 1$ point of Figure~\ref{fig:topk-k}a is a separate 3,000-step Top1 run, which recovered 222 tokens with 382 alive. The 4,000-step run from $k_0 = 128$ with a long $k = 2$ stage appears twice: as a pilot (1,499 recovered) and rerun with the same settings on another machine in the more-training series (1,495).}
 \label{tab:topk}
 \end{table}
 
@@ -672,11 +671,11 @@ $V$ & $k = 1$ & 8 & 32 & 64 & 128 & 256 \\
 \midrule
 2,000 & 31\% & 72\% & 93\% & 98\% & 99.8\% & 100\% \\
 5,000 & 29\% & 68\% & 90\% & 96\% & 98.9\% & 99.8\% \\
-10,000 & 26\% & 65\% & \rev{87\%} & \rev{94\%} & 98.1\% & 99.6\% \\
+10,000 & 26\% & 65\% & 87\% & 94\% & 98.1\% & 99.6\% \\
 20,000 & 25\% & 60\% & 84\% & 92\% & 96.9\% & 99.1\% \\
 30,000 & 23\% & 57\% & 81\% & 90\% & 95.7\% & 98.5\% \\
 40,000 & 22\% & 54\% & 79\% & 88\% & 94.5\% & 97.9\% \\
-50,257 & \rev{20\%} & 52\% & 77\% & 87\% & 93.4\% & 97.3\% \\
+50,257 & 20\% & 52\% & 77\% & 87\% & 93.4\% & 97.3\% \\
 \bottomrule
 \end{tabular}
 \caption{Share of features alive at initialisation, for subvocabularies of the most frequent tokens. Means of two seeds, which differ by at most 2 percentage points. The power law $k_0 \approx 1.37\,V^{0.405}$ fits the $k$ for 93\% alive over 27 sizes with an RMS error of 5.6\%. For other targets the fits are $1.24\,V^{0.384}$ (90\%), $1.50\,V^{0.422}$ (95\%) and $1.59\,V^{0.453}$ (97\%).}
