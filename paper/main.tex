@@ -261,7 +261,7 @@ So does $\lambda = 0$ do best of all? It recovers nothing \rev{(Figure~\ref{fig:
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/no_penalty.pdf}
-\caption{\rev{The same run on the 2k subset with $\lambda = 0.03$ and with no penalty (batch size 256, the Gao rate). (c) Squared reconstruction error relative to the squared norm of the tokens, without the penalty term.}}
+\caption{\rev{The same run on the 2k subset with $\lambda = 0.03$ and with no penalty (batch size 256, the Gao rate). The first point of each curve is the shared initialisation. (c) Squared reconstruction error relative to the squared norm of the tokens, without the penalty term. Without a penalty, the error falls by a factor of several thousand within 2,000 steps and then levels off at about 0.001. This floor is set by the constant learning rate: Adam's steps keep a size of about the learning rate, so the weights jitter around the minimum instead of settling on it.}}
 \label{fig:nopenalty}
 \end{figure}
 

@@ -458,22 +458,29 @@ def fig_lambda():
     return pts
 
 
+# The two runs share their initialisation (seed 0), which the logs do not evaluate. These values
+# come from evaluating build_model("l1", 768, 2000, seed=0) on the 2k subset with
+# sae_raw.evaluation (the same code reproduces the logged step-0 values of the TopK grid).
+INIT_2K_RELU = {"step": 0, "mean_l0": 987.2, "n_recovered_cos0.9": 0, "rel_loss": 1.319}
+
+
 def fig_no_penalty():
-    """lambda = 0.03 against lambda = 0, same run otherwise."""
+    """lambda = 0.03 against lambda = 0, same run otherwise, from initialisation."""
     d = exp4()
     fig, axes = plt.subplots(1, 3, figsize=(W_FULL, 2.3))
     z = pd.read_csv(RUNS / "exp10" / "summary.csv")
     p = d[d.cell == "lam0.03_lr1_b256"]
+    init = pd.DataFrame([INIT_2K_RELU])
     for x, col, lab in [(p, LAMBDA_COLOURS_STRONG[0.03], "$\\lambda = 0.03$"),
                         (z, "#d62728", "$\\lambda = 0$")]:
+        x = pd.concat([init, x[list(INIT_2K_RELU)]], ignore_index=True)
         axes[0].plot(x.step, x.mean_l0, "o-", color=col, label=lab)
         axes[1].plot(x.step, 100 * x["n_recovered_cos0.9"] / SUB_V, "o-", color=col, label=lab)
         axes[2].plot(x.step, x.rel_loss, "o-", color=col, label=lab)
     for ax in axes:
-        ax.set_xscale("log", base=2)
-        ax.set_xticks([2048, 8192, 32768])
-        ax.set_xticklabels(["2k", "8k", "32k"])
-        ax.minorticks_off()
+        ax.set_xticks([0, 8192, 16384, 24576, 32768])
+        ax.set_xticklabels(["0", "8k", "16k", "24k", "32k"])
+        ax.set_xlim(-1000, 34000)
         ax.set_xlabel("steps (Gao rate, batch 256)")
     axes[0].set_yscale("log")
     axes[0].set_ylabel("active features per token (mean)")
@@ -484,8 +491,8 @@ def fig_no_penalty():
     panel_label(axes[1], "(b) Recovery")
     axes[2].set_yscale("log")
     axes[2].minorticks_off()
-    axes[2].set_yticks([3e-4, 1e-3, 3e-3, 1e-2])
-    axes[2].set_yticklabels(["0.0003", "0.001", "0.003", "0.01"])
+    axes[2].set_yticks([1e-4, 1e-3, 1e-2, 1e-1, 1])
+    axes[2].set_yticklabels(["0.0001", "0.001", "0.01", "0.1", "1"])
     axes[2].set_ylabel("relative reconstruction error")
     panel_label(axes[2], "(c) Reconstruction")
     fig.tight_layout(w_pad=1.6)
