@@ -409,12 +409,25 @@ def time_to_sparsify(x, target=2.0):
 
 
 def fig_lambda():
+    """The trade-off in lambda: final recovery, and the training needed to sparsify."""
     d = exp4()
     final = d[d.step == d.groupby("cell").step.transform("max")]
     healthy = set(final[final.n_alive >= 1800].cell)
-    fig, axes = plt.subplots(2, 2, figsize=(W_FULL * 0.82, 4.3))
-    axes = axes.ravel()
-    a = axes[0]
+    fig, (b, a) = plt.subplots(1, 2, figsize=(W_FULL, 2.4))
+    best = final.loc[final.groupby("l1_coef")["n_recovered_cos0.9"].idxmax()]
+    b.plot(best.l1_coef, 100 * best["n_recovered_cos0.9"] / SUB_V, "s-", color=RELU,
+           label="tokens recovered")
+    b.plot(best.l1_coef, 100 * best.n_alive / SUB_V, "o--", color=GREY, label="features alive")
+    b.set_xscale("log")
+    b.set_xticks([0.03, 0.1, 0.3, 1])
+    b.set_xticklabels(["0.03", "0.1", "0.3", "1"])
+    b.minorticks_off()
+    b.set_xlabel("$\\lambda$")
+    b.set_ylabel("% of 2,000 (best run)")
+    b.set_ylim(55, 102)
+    b.legend(frameon=False, loc="lower left")
+    panel_label(b, "(a) Recovery at the end")
+
     pts = []
     for cell, x in d.groupby("cell"):
         if cell not in healthy:
@@ -439,38 +452,44 @@ def fig_lambda():
     a.set_xlabel("$\\lambda$")
     a.set_ylabel("Gao-rate steps until 2 active\nfeatures per token (mean)")
     a.legend(frameon=False, loc="upper right")
-    panel_label(a, "(a) Time to sparsify")
+    panel_label(a, "(b) Time to sparsify")
+    fig.tight_layout(w_pad=2.5)
+    save(fig, "lambda")
+    return pts
 
+
+def fig_no_penalty():
+    """lambda = 0.03 against lambda = 0, same run otherwise."""
+    d = exp4()
+    fig, axes = plt.subplots(1, 3, figsize=(W_FULL, 2.3))
     z = pd.read_csv(RUNS / "exp10" / "summary.csv")
     p = d[d.cell == "lam0.03_lr1_b256"]
     for x, col, lab in [(p, LAMBDA_COLOURS_STRONG[0.03], "$\\lambda = 0.03$"),
                         (z, "#d62728", "$\\lambda = 0$")]:
-        axes[1].plot(x.step, x.mean_l0, "o-", color=col, label=lab)
-        axes[2].plot(x.step, 100 * x["n_recovered_cos0.9"] / SUB_V, "o-", color=col, label=lab)
-        axes[3].plot(x.step, x.rel_loss, "o-", color=col, label=lab)
-    for ax in axes[1:]:
+        axes[0].plot(x.step, x.mean_l0, "o-", color=col, label=lab)
+        axes[1].plot(x.step, 100 * x["n_recovered_cos0.9"] / SUB_V, "o-", color=col, label=lab)
+        axes[2].plot(x.step, x.rel_loss, "o-", color=col, label=lab)
+    for ax in axes:
         ax.set_xscale("log", base=2)
         ax.set_xticks([2048, 8192, 32768])
         ax.set_xticklabels(["2k", "8k", "32k"])
         ax.minorticks_off()
         ax.set_xlabel("steps (Gao rate, batch 256)")
-    axes[1].set_yscale("log")
-    axes[1].set_ylabel("active features per token (mean)")
-    axes[1].legend(frameon=False, loc="lower left")
-    panel_label(axes[1], "(b) Sparsity")
-    axes[2].set_ylabel("tokens recovered (%)")
-    axes[2].set_ylim(-3, 103)
-    panel_label(axes[2], "(c) Recovery")
-    axes[3].set_yscale("log")
-    axes[3].minorticks_off()
-    axes[3].set_yticks([3e-4, 1e-3, 3e-3, 1e-2])
-    axes[3].set_yticklabels(["0.0003", "0.001", "0.003", "0.01"])
-    axes[3].set_ylabel("relative reconstruction error")
-    axes[3].legend(frameon=False, loc="lower left")
-    panel_label(axes[3], "(d) Reconstruction")
-    fig.tight_layout(w_pad=2.0, h_pad=1.6)
-    save(fig, "lambda")
-    return pts
+    axes[0].set_yscale("log")
+    axes[0].set_ylabel("active features per token (mean)")
+    axes[0].legend(frameon=False, loc="lower left")
+    panel_label(axes[0], "(a) Sparsity")
+    axes[1].set_ylabel("tokens recovered (%)")
+    axes[1].set_ylim(-3, 103)
+    panel_label(axes[1], "(b) Recovery")
+    axes[2].set_yscale("log")
+    axes[2].minorticks_off()
+    axes[2].set_yticks([3e-4, 1e-3, 3e-3, 1e-2])
+    axes[2].set_yticklabels(["0.0003", "0.001", "0.003", "0.01"])
+    axes[2].set_ylabel("relative reconstruction error")
+    panel_label(axes[2], "(c) Reconstruction")
+    fig.tight_layout(w_pad=1.6)
+    save(fig, "no_penalty")
 
 
 # ----------------------------------------------------------------------------
@@ -668,6 +687,7 @@ def main():
     fig_relu_grid()
     fig_codes()
     pts = fig_lambda()
+    fig_no_penalty()
     fig_relu_sizes()
     fig_init()
     fig_topk_sizes()
