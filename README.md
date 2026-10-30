@@ -6,17 +6,19 @@
 
 ---
 
-Sparse autoencoders (SAEs) are a standard tool for finding interpretable features inside language models. But on real activations nobody knows what the true features are. So when an SAE gives a messy feature, it is hard to say why. Was the training at fault, was the dictionary too small, or is there no clean feature to find?
+Sparse autoencoders (SAEs) are a standard tool for finding features inside language models. But on real activations nobody knows the true features, so a bad result is hard to diagnose.
 
-We built a setting where the answer is known. The data are the **raw token embeddings of GPT-2 Small**: 50,257 vectors in 768 dimensions, one per token. The SAE gets **exactly one feature per token**. With no bottleneck, the best dictionary is the embedding table itself: one feature pointing along each token.
+We build a setting with a known answer. We train SAEs on GPT-2 Small's **raw token embeddings** (50,257 vectors) with **exactly one feature per token**. With no bottleneck, the best dictionary is the embedding table itself. **Does standard SAE training, from a random start, find it?**
 
-So the question is simple: **does standard SAE training, from a random start, find it?** We count a token as *recovered* if some feature matches its embedding (cosine above 0.9).
+## The short answer: it can, but there are pitfalls
 
-## The short answer: yes, but the architecture decides how
+- **Easy ways to fail.** A TopK SAE with any fixed $k$ fails. A ReLU SAE fails with too strong an L1 penalty, and with no penalty at all.
+- **What works.** Lowering $k$ to 1 during training (TopK), or a weak but non-zero penalty (ReLU). On a 2,000-token vocabulary, ReLU recovers 98% of tokens; TopK reaches 89%, but needs eight times the training. On the full table, ReLU recovers 93%.
+- **Scaling laws.** With training scaled in proportion to the vocabulary, recovery is the same at every size. Small, cheap experiments predict the full-scale behaviour.
 
 <p align="center"><img src="docs/images/headline.png" width="560" alt="Tokens recovered against training for ReLU and TopK SAEs"></p>
 
-Both common SAE architectures can find the embeddings. But they need very different regimes, at very different costs. On a 2,000-token vocabulary, a ReLU SAE with an L1 penalty recovers 98% of tokens. A TopK SAE needs eight times the training to reach 89%.
+<p align="center"><i>Share of tokens recovered (a feature matches the token's embedding at cosine above 0.9), on the 2,000 most frequent tokens.</i></p>
 
 ## TopK: features die every time $k$ drops
 
