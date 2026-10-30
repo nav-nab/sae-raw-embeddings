@@ -4,7 +4,19 @@ A streamlined plan of the write-up, organised as a fleshed-out table of contents
 
 ## Thesis
 
-A sparse autoencoder with $m = V$ features, trained from random initialisation on GPT-2's token embedding table, should learn the embeddings as its features. Training can find them with either architecture, in the right regime. The architecture decides which regimes work and how much training they cost.
+### A toy model with a known answer
+
+SAEs are usually trained on model activations. There, the true features are unknown and far outnumber the dimensions. So when an SAE fails to find a clean feature, it is hard to tell why. The training may have gone wrong, or the dictionary may be too small, or the feature may not exist at all.
+
+We study a setting where the answer is known. The data are the rows of GPT-2 Small's token embedding table: $V = 50{,}257$ vectors in $d = 768$ dimensions. We give the SAE exactly as many features as there are tokens, $m = V$.
+
+With $m = V$ there is no bottleneck. Every token can have a feature of its own. A one-hot code, with each token rebuilt by a single feature pointing along it, reconstructs every token exactly and is as sparse as a code can be. The natural target for the SAE is therefore the embedding table itself: one feature per token, along that token's embedding. Sections 1.1 and 2.1 make this precise for each architecture.
+
+This makes $m = V$ a toy model of SAE training. Because the target is known, we can measure how much of it training finds: a token is recovered if some feature matches its embedding. And because capacity is not the limit, any token that is not recovered is a failure of training. We train from random initialisation, as in practice, and ask which architectures and settings find the target, and at what cost.
+
+### The findings
+
+Training can find the target with either architecture, in the right regime. The architecture decides which regimes work and how much training they cost.
 
 - **TopK SAEs** recover the embeddings only when $k$ is annealed from a large value down to 1, and at a high training cost (Section 1).
 - **ReLU SAEs with an L1 penalty** recover them across a wide region of hyperparameters (Section 2).
