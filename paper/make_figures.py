@@ -163,7 +163,7 @@ def fig_topk_k():
     a.set_xlabel("$k$ (fixed throughout training)")
     a.set_ylabel("% of 2,000")
     a.set_ylim(-3, 100)
-    a.legend(frameon=False, loc="center right")
+    a.legend(frameon=False, loc="upper left")
     panel_label(a, "(a) Fixed $k$")
 
     # Annealing pilots, 4,000 steps at batch 512 (docs/experiment_3, finer grid).
@@ -412,7 +412,8 @@ def fig_lambda():
     d = exp4()
     final = d[d.step == d.groupby("cell").step.transform("max")]
     healthy = set(final[final.n_alive >= 1800].cell)
-    fig, axes = plt.subplots(1, 3, figsize=(W_FULL, 2.3))
+    fig, axes = plt.subplots(2, 2, figsize=(W_FULL * 0.82, 4.3))
+    axes = axes.ravel()
     a = axes[0]
     pts = []
     for cell, x in d.groupby("cell"):
@@ -446,6 +447,7 @@ def fig_lambda():
                         (z, "#d62728", "$\\lambda = 0$")]:
         axes[1].plot(x.step, x.mean_l0, "o-", color=col, label=lab)
         axes[2].plot(x.step, 100 * x["n_recovered_cos0.9"] / SUB_V, "o-", color=col, label=lab)
+        axes[3].plot(x.step, x.rel_loss, "o-", color=col, label=lab)
     for ax in axes[1:]:
         ax.set_xscale("log", base=2)
         ax.set_xticks([2048, 8192, 32768])
@@ -459,7 +461,14 @@ def fig_lambda():
     axes[2].set_ylabel("tokens recovered (%)")
     axes[2].set_ylim(-3, 103)
     panel_label(axes[2], "(c) Recovery")
-    fig.tight_layout(w_pad=1.6)
+    axes[3].set_yscale("log")
+    axes[3].minorticks_off()
+    axes[3].set_yticks([3e-4, 1e-3, 3e-3, 1e-2])
+    axes[3].set_yticklabels(["0.0003", "0.001", "0.003", "0.01"])
+    axes[3].set_ylabel("relative reconstruction error")
+    axes[3].legend(frameon=False, loc="lower left")
+    panel_label(axes[3], "(d) Reconstruction")
+    fig.tight_layout(w_pad=2.0, h_pad=1.6)
     save(fig, "lambda")
     return pts
 

@@ -21,6 +21,7 @@
 \newtheorem{proposition}{Proposition}
 \newcommand{\norm}[1]{\lvert #1\rvert}
 \newcommand{\Vsub}{2\text{k}}
+\newcommand{\rev}[1]{{\color{red}#1}}
 
 \title{Can a sparse autoencoder find the token embeddings?\\[2pt]
 \large A toy model of SAE training with a known answer}
@@ -38,9 +39,9 @@ Sparse autoencoders (SAEs) are trained to find interpretable features in neural 
 
 A sparse autoencoder (SAE) rewrites each input vector as a sparse combination of learned directions, called features. SAEs have become a standard tool for finding interpretable features in the activations of language models \citep{cunningham2023sparse,bricken2023monosemanticity,templeton2024scaling,gao2024scaling}. The hope is that each feature corresponds to one concept the model uses.
 
-Training an SAE is not easy. Two problems recur in the literature. The first is the trade-off between sparsity and reconstruction: a sparser code reconstructs the input less well. The second is \emph{dead features}: features that stop activating on any input during training, and so stop receiving gradient \citep{bricken2023monosemanticity,gao2024scaling}. Several remedies exist, but it is hard to tell how well any of them works. In real activations the true features are unknown. When an SAE fails to produce a clean feature, the cause could be the training, the size of the dictionary, or the absence of any such feature in the data.
+Training an SAE is not easy. Two problems recur in the literature. The first is the trade-off between sparsity and reconstruction: a sparser code reconstructs the input less well. The second is \emph{dead features}: features that stop activating on any input during training, and so stop receiving gradient \citep{bricken2023monosemanticity,gao2024scaling}. \rev{Several remedies exist, and they are judged by how many features stay alive and how well the SAE reconstructs its input. A harder question is whether the resulting features are the right ones, because in real activations the true features are unknown.} When an SAE fails to produce a clean feature, the cause could be the training, the size of the dictionary, or the absence of any such feature in the data.
 
-\paragraph{A toy model with a known answer.} We study a setting where the answer is known. The data are the rows of the input embedding table of GPT-2 Small \citep{radford2019language}: $V = 50{,}257$ vectors in $d = 768$ dimensions, one per token. We give the SAE exactly as many features as there are tokens, $m = V$.
+\paragraph{A toy model with a known answer.} We study a setting where the answer is known. The data are the rows of the input embedding table of GPT-2 Small \citep{radford2019language}: $V = 50{,}257$ vectors in $d = 768$ dimensions, one per token. \rev{These are the \emph{raw} token embeddings: the vectors the model looks up for each token before any layer runs. Unlike contextual embeddings, they do not depend on the surrounding text.} We give the SAE exactly as many features as there are tokens, $m = V$.
 
 With $m = V$ there is no bottleneck. Every token can have a feature of its own. A one-hot code, in which each token is rebuilt by a single feature pointing along it, reconstructs every token exactly. It is also as sparse as a code can be. The natural target for the SAE is therefore the embedding table itself: one feature per token, along that token's embedding. Sections~\ref{sec:topk-target} and~\ref{sec:relu-target} make this precise for each architecture.
 
@@ -109,18 +110,18 @@ Most runs use one seed. Repeated runs on the 2k subset differ by about 40 tokens
 \subsection{The target}
 \label{sec:topk-target}
 
-A Top1 SAE rebuilds each token from one decoder row times a non-negative coefficient. The rows have unit length, so a token $x$ is rebuilt exactly only if some row equals $x/\norm{x}$. With $m = V$, the dictionary with zero loss is therefore the set of normalised embeddings. It is unique up to the order of the features, as long as no two embeddings point the same way.
+A Top1 SAE rebuilds each token from one decoder row times a non-negative coefficient. The rows have unit length, so a token $x$ is rebuilt exactly \rev{if and only if} some row equals $x/\norm{x}$. With $m = V$, the dictionary with zero loss is therefore the set of normalised embeddings. It is unique up to the order of the features, as long as no two embeddings point the same way.
 
 For $k > 1$ this uniqueness is lost. A token can be rebuilt from several features, and many other dictionaries also reach zero loss. So only Top1 makes the embeddings the unique target.
 
 \subsection{Sparsity against keeping features alive}
 \label{sec:tradeoff}
 
-A TopK feature receives gradient only on the tokens where it is among the top $k$. A feature that is never selected gets no gradient, so it never moves and stays dead. This creates a trade-off between sparsity and keeping features alive, which \citet{gao2024scaling} also identify as a central difficulty.
+A TopK feature receives gradient only on the tokens where it is among the top $k$. A feature that is never selected gets no gradient, so it \rev{does not move}.\footnote{\rev{In principle a dead feature can still revive. It gets no gradient itself, but the features above it keep training, and they can move away from a token and leave it to the dead feature. In practice this never happened in our Top1 runs: on the full table, none of the 39,914 features dead at initialisation revived.}} This creates a trade-off between sparsity and keeping features alive, which \citet{gao2024scaling} also identify as a central difficulty.
 
 \textbf{Top1 from the start fails.} On the full table, only 20.6\% of features are among the top 1 for some token at initialisation. Training a Top1 SAE did not revive a single one of the others. The alive features then collapsed from 10,343 to 259 within the first 5\% of training, and only 16 tokens were recovered. On the 2k subset the picture is similar: 382 features stay alive and 227 tokens are recovered (Figure~\ref{fig:headline}, cross).
 
-\textbf{A larger fixed $k$ fails the other way} (Figure~\ref{fig:topk-k}a). Raising $k$ keeps more features alive: 89\% at $k = 32$, against 19\% at $k = 1$. But every token then uses all $k$ slots. Once a token can be rebuilt from several features, the loss rewards doing so, and no feature has to line up with a single token. Recovery falls as $k$ rises, and is gone by $k = 16$.
+\textbf{A larger fixed $k$ fails the other way} (Figure~\ref{fig:topk-k}a). Raising $k$ keeps more features alive: 89\% at $k = 32$, against 19\% at $k = 1$. But every token then uses all $k$ slots. \rev{The dictionary of normalised embeddings still has zero loss, but it is no longer the only one: many other dictionaries rebuild every token exactly from several features. The loss is indifferent between them, so nothing pulls each feature onto a single token.} Recovery falls as $k$ rises, and is gone by $k = 16$.
 
 \begin{figure}[t]
 \centering
@@ -137,7 +138,7 @@ A TopK feature receives gradient only on the tokens where it is among the top $k
 Annealing works (Figure~\ref{fig:topk-k}b). From $k_0 = 64$ or 128, it recovers 75\% of the 2k subset in 4,000 steps, against 11\% for Top1 throughout. Figure~\ref{fig:anneal} shows how. It follows a run with $k_0 = 128$ through training. Three facts stand out.
 \begin{itemize}[leftmargin=*]
 \item \textbf{Features die only at the drops in $k$.} Between drops the alive count is flat. Most deaths happen at the final drop, from $k = 2$ to $k = 1$, which costs about 20\% of the alive features in this run. A large $k_0$ also revives the features that start dead: at full scale, $k_0 = 128$ revived all 3,349 of them early in training.
-\item \textbf{Dead features almost never revive.} Once a feature has died at a drop, it stays dead.
+\item \textbf{\rev{Features which die at a drop almost never revive.}} Once a feature has died at a drop, it stays dead.
 \item \textbf{The survivors are correct.} At the end, 1,495 tokens are recovered by 1,515 alive features. Across all our annealed runs, 96\% to 100\% of the surviving features are recovered tokens. This is the opposite of Top1 from the start, where most survivors match no token. So recovery after annealing is essentially the number of features that survive.
 \end{itemize}
 
@@ -185,6 +186,8 @@ TopK annealing works, but it is expensive. On the 2k subset, the best ReLU SAE r
 \subsection{The embeddings minimise the L1 loss}
 \label{sec:relu-target}
 
+\rev{We now turn from TopK to the other common architecture: a ReLU encoder with an L1 penalty. Here sparsity is not imposed by a hard limit on the number of active features. Instead, the penalty makes every active feature costly, and each token may use as many features as it likes. We first show that the embeddings are still the natural target, and then ask when training finds them.}
+
 With $\lambda > 0$, no dictionary reaches zero loss, because every active feature costs a penalty. The embeddings are still the natural target. The reason is a lower bound on the loss of each token.
 
 \begin{proposition}\label{prop:l1}
@@ -193,16 +196,16 @@ For any unit-length dictionary and any non-negative code, the loss of a token $x
 
 The proof is short. By the triangle inequality, the penalty $\lambda\sum_j f_j$ is at least $\lambda\norm{\hat{x}}$. Among all reconstructions of a given length, the closest to $x$ points along $x$. Minimising over the length gives the bound. Appendix~\ref{app:l1} gives the argument step by step.
 
-The optimal coefficient is $\norm{x} - \lambda/2$, not $\norm{x}$: the L1 penalty shrinks every coefficient by $\lambda/2$. This is the familiar shrinkage of the lasso \citep{tibshirani1996lasso}, which \citet{gao2024scaling} also discuss for ReLU SAEs. Our full-scale run shows exactly this: each token's coefficient ended at its norm minus 0.15, which is $\lambda/2$ for $\lambda = 0.3$.
+The optimal coefficient is $\norm{x} - \lambda/2$, not $\norm{x}$: the L1 penalty shrinks every coefficient by $\lambda/2$. This is the familiar shrinkage of the lasso \citep{tibshirani1996lasso}, which \citet{gao2024scaling} also discuss for ReLU SAEs. Our full-scale run \rev{(Section~\ref{sec:fullscale})} shows exactly this: each token's coefficient ended at its norm minus 0.15, which is $\lambda/2$ for $\lambda = 0.3$.
 
 With $m = V$, every token can have its own feature along it. Every token then sits at its lower bound at once, so the normalised embeddings minimise the total loss.
 
 \subsection{One-hot codes are reachable for every GPT-2 token}
 \label{sec:hull}
 
-The argument assumes that the encoder can output this code exactly. Each token's own feature must be active, and every other feature must be zero on it. A ReLU encoder can do this for a token exactly when the token's embedding is a vertex of the convex hull of the table: a point that is not a weighted average of the other embeddings (Appendix~\ref{app:hull}). Every GPT-2 embedding is such a vertex. For 99.7\% of tokens the token's own direction already separates it from all the others, and a linear programme confirms the rest. So the minimiser is reachable in principle.
+The argument assumes that the encoder can output this code exactly. Each token's own feature must be active, and every other feature must be zero on it. \rev{Whether this is possible is a geometric question about the embedding table.} A ReLU encoder can do this for a token exactly when the token's embedding is a vertex of the convex hull of the table: a point that is not a weighted average of the other embeddings (Appendix~\ref{app:hull}). Every GPT-2 embedding is such a vertex. For 99.7\% of tokens the token's own direction already separates it from all the others, and a linear programme confirms the rest. So the minimiser is reachable in principle.
 
-How widely a token is separated also predicts whether training finds it. We measure the \emph{own-direction margin}: how far the token's projection onto its own direction exceeds the largest projection of any other token, as a fraction of its norm. Figure~\ref{fig:margin} plots recovery in the full-scale ReLU run against this margin. Tokens with a margin above 0.3 are recovered almost without exception. Tokens with a small margin are recovered less often. So the unrecovered tokens are not ones a ReLU encoder cannot isolate. They are tokens it can isolate only through a narrow gap, which training did not find.
+How widely a token is separated also predicts whether training finds it. We measure the \emph{own-direction margin}: how far the token's projection onto its own direction exceeds the largest projection of any other token, as a fraction of its norm. Figure~\ref{fig:margin} plots recovery in the full-scale ReLU run against this margin. Tokens with a margin above 0.3 are recovered almost without exception. Tokens with a small margin are recovered less often. \rev{So the unrecovered tokens are those which the ReLU encoder needed to isolate through a narrow gap, which training did not find.}
 
 \begin{figure}[t]
 \centering
@@ -232,7 +235,7 @@ Progress in the successful region depends on learning rate times steps, not on t
 
 Sparsification is gradual. Codes go from hundreds of active features per token to about one, one token at a time, while few features die. This is the contrast with TopK, where every token loses features at once at each drop. At full scale, codes went from about 25,000 active features per token to 1.37, while only about 400 of the 50,257 features died.
 
-The codes end near one-hot, though not exactly (Figure~\ref{fig:codes}). In the best runs, 78\% to 90\% of tokens use a single feature, and a short tail uses more. Unlike TopK, a ReLU SAE lets each token use any number of features. \citet{gao2024scaling} note that TopK's fixed number of features per token is a limitation, and suggest constraining the average instead. Our ReLU codes show what such a variable code looks like. Ignoring features with very small coefficients changes this picture little. With a cutoff at 10\% of the token's largest coefficient, the share of tokens on one feature moves by at most 2 points (Appendix~\ref{app:cutoff}).
+The codes end near one-hot, though not exactly (Figure~\ref{fig:codes}). In the best runs, 78\% to 90\% of tokens use a single feature, and a short tail uses more. Unlike TopK, a ReLU SAE lets each token use any number of features. \citet{gao2024scaling} note that TopK's fixed number of features per token is a limitation, and suggest constraining the average instead. Our ReLU codes show what such a variable code looks like. \rev{The tokens that use two or more features are genuinely split between them. For these tokens, the second-largest coefficient is typically 34\% to 55\% of the largest, depending on the run, and it is below 10\% of the largest for at most 16\% of them. A feature with coefficient $f$ contributes roughly $(f/f_{\max})^2$ of a token's squared norm, so a typical second feature carries about 10\% to 30\% of it. This is why} ignoring features with very small coefficients changes this picture little. With a cutoff at 10\% of the token's largest coefficient, the share of tokens on one feature moves by at most 2 points (Appendix~\ref{app:cutoff}).
 
 \begin{figure}[t]
 \centering
@@ -246,12 +249,12 @@ The codes end near one-hot, though not exactly (Figure~\ref{fig:codes}). In the 
 
 A smaller $\lambda$ recovers more, because it kills fewer features on the way to one-hot codes. But a smaller $\lambda$ also sparsifies more slowly. Figure~\ref{fig:lambda}a measures the training needed until codes reach two active features per token on average. It grows roughly as $\lambda^{-0.9}$ between $\lambda = 0.03$ and 0.3: about 26,000 Gao-rate steps at $\lambda = 0.03$, against 2,000 to 4,000 at $\lambda = 0.3$. This is the ReLU form of the trade-off of Section~\ref{sec:tradeoff}.
 
-So does $\lambda = 0$ do best of all? It recovers nothing (Figure~\ref{fig:lambda}b, c). With no penalty, every exact reconstruction has zero loss, so the bound of Proposition~\ref{prop:l1} no longer singles out the embeddings. The run reconstructs as well as the best penalised run, but with dense codes of about 670 features per token. Its decoder rows stay close to random: the median cosine between a token and its nearest decoder row rises only from 0.12 to 0.16.
+So does $\lambda = 0$ do best of all? It recovers nothing (Figure~\ref{fig:lambda}b, c). With no penalty, every exact reconstruction has zero loss, so the bound of Proposition~\ref{prop:l1} no longer singles out the embeddings. The run reconstructs as well as the best penalised run, but with dense codes of about 670 features per token. \rev{For most of training it reconstructs better, since it pays nothing for using many features (Figure~\ref{fig:lambda}d).} Its decoder rows stay close to random: the median cosine between a token and its nearest decoder row rises only from 0.12 to 0.16.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{figures/lambda.pdf}
-\caption{The strength of the penalty, on the 2k subset. (a) Training needed until codes reach two active features per token on average, for every run without heavy deaths. The dashed line is a fit for $\lambda \le 0.3$. (b, c) The same run with $\lambda = 0.03$ and with no penalty.}
+\caption{The strength of the penalty, on the 2k subset. (a) Training needed until codes reach two active features per token on average, for every run without heavy deaths. The dashed line is a fit for $\lambda \le 0.3$. \rev{(b--d)} The same run with $\lambda = 0.03$ and with no penalty. \rev{(d) Squared reconstruction error relative to the squared norm of the tokens, without the penalty term.}}
 \label{fig:lambda}
 \end{figure}
 
@@ -265,15 +268,19 @@ The best $\lambda$ is therefore roughly the smallest one that still finishes spa
 \section{With training scaled to the vocabulary, recovery does not depend on its size}
 \label{sec:sizes}
 
-The results so far come mostly from the 2k subset. Do they carry over to larger vocabularies, and how must the settings change? We trained both architectures on the 5,000, 10,000 and 20,000 most frequent tokens, always with $m = V$.
+The results so far come mostly from the 2k subset. Do they carry over to larger vocabularies, and how must the settings change? We trained both architectures on the 5,000, 10,000 and 20,000 most frequent tokens, always with $m = V$. \rev{We ask two questions. First, how must the training budget grow with $V$ for recovery to stay the same? Second, do the best settings change with $V$: the penalty $\lambda$ for ReLU, and the starting $k_0$ for TopK?}
 
 \subsection{Measuring training across sizes}
 
-At a fixed vocabulary size, learning rate times steps is what counts, for both architectures. Across sizes, we scale the number of steps in proportion to $V$, at a fixed batch size. Every size then gets the same number of steps per token of vocabulary, and the same epochs' worth: each token is seen the same number of times. The learning rate still falls with size as $1/\sqrt{m}$, so larger vocabularies get more steps of a smaller rate.
+{\color{red}
+To compare vocabularies of different sizes, we need a fair notion of ``the same amount of training''. A larger vocabulary has more tokens to learn and more features to train, so the same number of steps would not be a fair comparison.
 
-The two measures differ only when the batch size changes, as it does for our full-scale runs. For ReLU we use steps per token, since the batch size hardly matters at a fixed size (Section~\ref{sec:regimes}). For TopK we use epochs' worth. A TopK feature gets gradient only when it is selected for a token in the minibatch, so what it receives scales with the number of times each token is seen.
+Our rule is to scale the number of steps in proportion to $V$, at a fixed batch size. For example, a run of 4,000 steps on 2,000 tokens becomes a run of 40,000 steps on 20,000 tokens. Two measures of training are then the same at every size. The first is the number of steps per token of vocabulary, $S/V$. The second is the number of epochs' worth, $SB/V$: each token is seen the same number of times on average. The learning rate still follows the Gao rate, so it falls with size as $1/\sqrt{m}$. Larger vocabularies therefore get more steps, each with a smaller learning rate.
 
-This is a different measure from the one \citet{gao2024scaling} use. They find that the tokens needed for the loss to converge grow as about $m^{0.6}$. Our measure is recovery of a fixed table, which each run sees many times over, rather than convergence on a stream of new activations.
+The two measures agree whenever the batch size is fixed, as in all the runs of the next two subsections. They differ only for the full-scale runs, which used larger batches (Section~\ref{sec:fullscale}). There we compare ReLU runs by steps per token, because at a fixed size the batch size hardly matters for ReLU (Section~\ref{sec:regimes}). We compare TopK runs by epochs' worth. A TopK feature gets gradient only when it is selected for a token in the minibatch, so the training it receives grows with the number of times each token is seen.
+
+Our measure differs from the one used by \citet{gao2024scaling}. They find that the number of training tokens needed for the loss to converge grows as about $m^{0.6}$. We measure the recovery of a fixed table, which each run sees many times over, rather than convergence on a stream of new activations.
+}
 
 \subsection{ReLU: recovery as a function of \texorpdfstring{$\lambda$}{lambda} is the same at every size}
 
@@ -325,6 +332,7 @@ The difference comes from the geometry of the embeddings. GPT-2's embeddings sha
 This crowding does not make tokens harder to isolate, however. The own-direction margin of Section~\ref{sec:hull} barely changes with size. From 2,000 tokens to the full table, the median margin falls only from 0.36 to 0.32. So differences in recovery across sizes come from training, not from tokens becoming harder to separate.
 
 \subsection{Full scale}
+\label{sec:fullscale}
 
 Both architectures were also trained once on the full table, before the size runs.
 
@@ -335,7 +343,7 @@ The ReLU SAE with $\lambda = 0.3$ recovered 93\% (Figure~\ref{fig:relu-sizes}, s
 \section{Discussion}
 \label{sec:discussion}
 
-This section is speculative. None of the explanations below was tested.
+\rev{We suggest possible explanations for our empirical findings.}
 
 \paragraph{Why is TopK so much slower?} A ReLU SAE sparsifies gradually. Each token sheds features at its own pace, and a feature that loses one token can keep or find others. A TopK schedule removes slots from every token at the same moment. At each drop, every feature that is not among the top $k$ for some token dies at once, and it has no way back. More training helps only by sorting features into their tokens before the drop. This may be why TopK keeps gaining from training long after ReLU has converged.
 
@@ -351,8 +359,6 @@ This section is speculative. None of the explanations below was tested.
 \paragraph{Training length.} We stopped the TopK runs at 128,000 steps, while recovery was still rising, so their limit is unknown. The ReLU runs at $\lambda = 0.1$ were also still rising at the end at every size, so their numbers are lower bounds.
 
 \paragraph{Settings.} The learning rate follows a scaling derived for TopK SAEs on activations, which we also use for ReLU SAEs. We did not tune it per architecture beyond the grid of Section~\ref{sec:regimes}. The subvocabularies are chosen by frequency, which changes their geometry as they grow. The recovery thresholds of 0.9 and 0.99 are our choice.
-
-\paragraph{Hardware.} Everything ran on CPUs. Results on the 2k subset differ by about 35 tokens between our two machines with the same code, seed and settings.
 
 \section{Related work}
 \label{sec:related}
