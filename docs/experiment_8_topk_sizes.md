@@ -2,6 +2,8 @@
 
 Status: done. Run on the laptop on 2026-10-28 to 29, about 5 hours. Results at the end.
 
+Note: a first version of this experiment gave every size the same fixed number of steps (4,000). That was a design error: a larger vocabulary then gets less training per token, so the runs could not answer the question. They were discarded, and the experiment was rerun with $2V$ steps, as described below.
+
 ## Question
 
 Part 3a of `docs/write_up_plan.md` asks how the starting $k$ for annealing must grow with the vocabulary size $V$. Experiment 5 measured the $k_0$ that leaves a given share of features alive at initialisation. This experiment tests whether matching that share at the start also matches recovery at the end, given the same training per token. On the subset (T15: $k_0 = 128$, 1,024 epochs' worth) and at full scale (T11: $k_0 = 128$, about 1,300 epochs' worth), recovery was 75% and 70%.
