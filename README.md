@@ -1,5 +1,7 @@
 # Can a sparse autoencoder find the token embeddings?
 
+<img src="docs/images/icon.svg" align="right" width="90" alt="Cartoon of a sparse autoencoder: three inputs, a wide layer of features with one lit, three outputs">
+
 ### 📄 [Read the full write-up (PDF)](paper/main.pdf)
 
 *A toy model of sparse autoencoder training with a known answer.*
